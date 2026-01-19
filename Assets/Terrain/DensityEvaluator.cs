@@ -40,12 +40,12 @@ namespace LevelGeneration.Terrain
 
             DensityJob job = new()
             {
-                density = workingDensityData,
                 shapes = shapes,
                 initialValue = 32.0f,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 terrainScale = terrainScale,
+                density = workingDensityData,
                 positiveValueFound = positiveValueFound,
                 negativeValueFound = negativeValueFound
             };
@@ -63,14 +63,14 @@ namespace LevelGeneration.Terrain
         [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct DensityJob : IJobFor
         {
-            [NativeDisableParallelForRestriction]
-            public NativeArray<float> density;
-
             [ReadOnly] public NativeList<Shape> shapes;
             [ReadOnly] public float initialValue;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
             [ReadOnly] public float terrainScale;
+
+            [NativeDisableParallelForRestriction]
+            public NativeArray<float> density;
 
             [NativeDisableParallelForRestriction]
             public NativeReference<bool> positiveValueFound;
@@ -94,11 +94,11 @@ namespace LevelGeneration.Terrain
 
                 // Apply shapes.
                 int3 globalCellIndex = (brickIndex * brickSize) + new int3(x, y, z);
-                float4 globelCellPos = new((float3)globalCellIndex * terrainScale, 1.0f);
+                float3 globelCellPos = (float3)globalCellIndex * terrainScale;
                 foreach (Shape shape in shapes)
                 {
                     // Compute position translated by inverse shape matrix.
-                    float3 translatedPosition = math.mul(shape.InverseMatrix, globelCellPos).xyz;
+                    float3 translatedPosition = FastMul(shape.InverseMatrix, globelCellPos);
 
                     // Compute shape distance value and apply to density field.
                     float distance = 0;
@@ -168,6 +168,15 @@ namespace LevelGeneration.Terrain
                 k *= 6.0f;
                 float h = math.max(k - math.abs(a - b), 0.0f) / k;
                 return math.min(a, b) - h * h * h * k * (1.0f / 6.0f);
+            }
+
+            //
+            // Fast multiply function, same as math.mul for AffineTransforms but without the w component.
+            //
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static float3 FastMul(AffineTransform a, float3 pos)
+            {
+                return math.mul(a.rs, pos.xyz) + a.t;
             }
         }
     }

@@ -33,9 +33,9 @@ public class Stopwatch
     {
         double timeMiliseconds = time * 1000.0;
 
-        timeMiliseconds *= 100.0;
+        timeMiliseconds *= 1000.0;
         timeMiliseconds = math.round(timeMiliseconds);
-        timeMiliseconds /= 100.0;
+        timeMiliseconds /= 1000.0;
 
         return timeMiliseconds;
     }

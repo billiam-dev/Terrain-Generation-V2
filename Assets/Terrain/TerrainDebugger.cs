@@ -33,7 +33,7 @@ namespace LevelGeneration.Terrain
             string globalIndexStr = string.Format("({0}, {1}, {2})", globalCellIndex.x, globalCellIndex.y, globalCellIndex.z);
             string brickIndexStr = string.Format("({0}, {1}, {2})", brickIndex.x, brickIndex.y, brickIndex.z);
             string cellIndexStr = string.Format("({0}, {1}, {2})", localCellIndex.x, localCellIndex.y, localCellIndex.z);
-            string infoStr = $"Global Cell: {globalIndexStr}\nChunk: {brickIndexStr}\nLocal cell: {cellIndexStr}\nDensity: {density}";
+            string infoStr = $"Global Cell: {globalIndexStr}\nBrick: {brickIndexStr}\nLocal cell: {cellIndexStr}\nDensity: {density}";
 
             // Draw label.
             SceneView view = SceneView.currentDrawingSceneView;
@@ -43,7 +43,7 @@ namespace LevelGeneration.Terrain
             Handles.Label(transform.position + offset, infoStr);
 
             // Draw cell.
-            float cellSize = m_Terrain.CellSize;
+            float cellSize = m_Terrain.WorldCellSize;
             float3 cellCorner = (float3)globalCellIndex * cellSize;
             float3 cellCentre = cellCorner + (cellSize / 2.0f);
 
@@ -51,7 +51,7 @@ namespace LevelGeneration.Terrain
             Gizmos.DrawCube(cellCentre, (float3)cellSize);
 
             // Draw brick.
-            float brickSize = m_Terrain.BrickSize;
+            float brickSize = m_Terrain.WorldBrickSize;
             float3 brickCorner = brickIndex * (float3)brickSize;
             float3 brickCentre = brickCorner + (brickSize / 2.0f);
 

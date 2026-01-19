@@ -1,8 +1,10 @@
+using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 
 namespace LevelGeneration.Terrain
 {
+    [DisallowMultipleComponent]
     public class ShapeBrush : MonoBehaviour
     {
         [SerializeField]
@@ -38,7 +40,12 @@ namespace LevelGeneration.Terrain
             }
         }
 
-        public Shape Shape => new(
+        Shape m_Shape;
+
+        public Shape EvaluateNewShape(out float3 oldPosition, out float3 oldVolume, out float3 newPosition, out float3 newVolume)
+        {
+            Shape oldShape = m_Shape;
+            Shape newShape = new(
             transform.position,
             transform.rotation,
             transform.lossyScale,
@@ -52,40 +59,104 @@ namespace LevelGeneration.Terrain
             m_Dimention3
             );
 
+            // Apply old and new shape volumes to update brick array.
+            if (!oldShape.IsNull)
+            {
+                oldPosition = oldShape.Matrix.t;
+                oldVolume = oldShape.ComputeVolume();
+            }
+            else
+            {
+                oldPosition = 0;
+                oldVolume = 0;
+            }
+
+            newPosition = newShape.Matrix.t;
+            newVolume = newShape.ComputeVolume();
+
+            // Update current shape.
+            m_Shape = newShape;
+
+            // Return the new shape.
+            return m_Shape;
+        }
+
+        public Shape EvaluateCurrentShape(out float3 position, out float3 volume)
+        {
+            position = m_Shape.Matrix.t;
+            volume = m_Shape.ComputeVolume();
+
+            return m_Shape;
+        }
+
 #if UNITY_EDITOR
+        void OnValidate()
+        {
+            m_IsDirty = true;
+
+            switch (m_DistanceFunction)
+            {
+                case DistanceFunction.Sphere:
+                case DistanceFunction.Capsule:
+                case DistanceFunction.Torus:
+                case DistanceFunction.Cube:
+                    m_Dimention1 = math.max(m_Dimention1, 0);
+                    m_Dimention2 = math.max(m_Dimention2, 0);
+                    m_Dimention3 = math.max(m_Dimention3, 0);
+                    break;
+
+                case DistanceFunction.SemiSphere:
+                    m_Dimention1 = math.max(m_Dimention1, 0);
+                    m_Dimention2 = math.clamp(m_Dimention2, -1.0f, 1.0f);
+                    break;
+            }
+        }
+
         void OnDrawGizmos()
         {
             // Early return if this object is selected, since the handle is drawn by this object's editor script.
             if (Selection.Contains(gameObject))
                 return;
-
-            // Else... draw gizmo.
+            
             Gizmos.matrix = transform.localToWorldMatrix;
             Gizmos.color = new Color(0.1f, 0.8f, 0.1f, 0.5f);
 
-            Shape shape = Shape;
-            switch (shape.DistanceFunction)
+            switch (m_DistanceFunction)
             {
                 case DistanceFunction.Sphere:
-                    Gizmos.DrawWireSphere(Vector3.zero, shape.Dimention1);
+                    Gizmos.DrawWireSphere(Vector3.zero, m_Dimention1);
                     break;
 
                 case DistanceFunction.SemiSphere:
-                    MoreGizmos.DrawWireSemiSphere(Vector3.zero, shape.Dimention1, shape.Dimention2);
+                    MoreGizmos.DrawWireSemiSphere(Vector3.zero, m_Dimention1, m_Dimention2);
                     break;
 
                 case DistanceFunction.Capsule:
-                    MoreGizmos.DrawWireCapsule(Vector3.zero, (shape.Dimention1 + shape.Dimention2) * 2.0f, shape.Dimention2);
+                    MoreGizmos.DrawWireCapsule(Vector3.zero, (m_Dimention1 + m_Dimention2) * 2.0f, m_Dimention2);
                     break;
 
                 case DistanceFunction.Torus:
-                    MoreGizmos.DrawWireTorus(Vector3.zero, shape.Dimention1, shape.Dimention2);
+                    MoreGizmos.DrawWireTorus(Vector3.zero, m_Dimention1, m_Dimention2);
                     break;
 
                 case DistanceFunction.Cube:
-                    Gizmos.DrawWireCube(Vector3.zero, new Vector3(shape.Dimention1, shape.Dimention2, shape.Dimention3) * 2.0f);
+                    Gizmos.DrawWireCube(Vector3.zero, new Vector3(m_Dimention1, m_Dimention2, m_Dimention3) * 2.0f);
                     break;
             }
+        }
+
+        void OnDrawGizmosSelected()
+        {
+            Gizmos.matrix = Matrix4x4.identity;
+
+            float3 position = m_Shape.Matrix.t;
+            float3 volume = m_Shape.ComputeVolume();
+
+            Gizmos.color = new(0, 1, 0, 0.1f);
+            Gizmos.DrawWireCube(position, volume);
+
+            Gizmos.color = new(0, 1, 0, 0.05f);
+            Gizmos.DrawCube(position, volume);
         }
 #endif
     }
