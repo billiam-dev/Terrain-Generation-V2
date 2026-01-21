@@ -7,6 +7,102 @@ namespace LevelGeneration.Terrain
     [DisallowMultipleComponent]
     public class ShapeBrush : MonoBehaviour
     {
+        public DistanceFunction DistanceFunction
+        {
+            get
+            {
+                return m_DistanceFunction;
+            }
+            set
+            {
+                if (value != m_DistanceFunction)
+                {
+                    m_DistanceFunction = value;
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public BlendMode BlendMode
+        {
+            get
+            {
+                return m_BlendMode;
+            }
+            set
+            {
+                if (value != m_BlendMode)
+                {
+                    BlendMode = value;
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public float Smoothness
+        {
+            get
+            {
+                return m_Smoothness;
+            }
+            set
+            {
+                if (value != Smoothness)
+                {
+                    Smoothness = value;
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public float Dimention1
+        {
+            get
+            {
+                return m_Dimention1;
+            }
+            set
+            {
+                if (value != m_Dimention1)
+                {
+                    m_Dimention1 = value;
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public float Dimention2
+        {
+            get
+            {
+                return m_Dimention2;
+            }
+            set
+            {
+                if (value != m_Dimention2)
+                {
+                    m_Dimention2 = value;
+                    IsDirty = true;
+                }
+            }
+        }
+
+        public float Dimention3
+        {
+            get
+            {
+                return m_Dimention3;
+            }
+            set
+            {
+                if (value != m_Dimention3)
+                {
+                    m_Dimention3 = value;
+                    IsDirty = true;
+                }
+            }
+        }
+
         [SerializeField]
         DistanceFunction m_DistanceFunction = DistanceFunction.Sphere;
 

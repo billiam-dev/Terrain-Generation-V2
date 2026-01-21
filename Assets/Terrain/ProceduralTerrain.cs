@@ -10,7 +10,7 @@ namespace LevelGeneration.Terrain
 {
     [ExecuteInEditMode]
     [DisallowMultipleComponent]
-    public class ProceduralTerrain : MonoBehaviour
+    public partial class ProceduralTerrain : MonoBehaviour
     {
         Scene m_Scene;
         DensityBrickMap m_BrickMap; // Note: eventually this can be converted to BrickMapLevels, for multiple LODs stretching into the horizen.
@@ -18,8 +18,6 @@ namespace LevelGeneration.Terrain
 
         ShapeBrush[] m_ShapeBrushes;
         HashSet<int3> m_ModifiedBricks; // Note: this might be better off inside DensityBrickMap.
-
-        DebugInfo m_DebugInfo;
 
         public float WorldCellSize => k_TerrainScale;                // Uniform size in world units of a single cell.
         public float WorldBrickSize => k_BrickSize * k_TerrainScale; // Uniform size in world units of a single brick.
@@ -36,12 +34,7 @@ namespace LevelGeneration.Terrain
             m_DensityEvaluator.Allocate(k_CellsPerBrick);
             m_ModifiedBricks = new();
 
-            m_DebugInfo = new()
-            {
-                brickSize = k_BrickSize,
-                cellsPerBrick = k_CellsPerBrick,
-                clipmapLevelSize = k_BrickmapLevelSize
-            };
+            InitializeDebug();
 
             // Build initial shape queue.
             m_ShapeBrushes = GetComponentsInChildren<ShapeBrush>(false);
@@ -54,6 +47,10 @@ namespace LevelGeneration.Terrain
             }
 
             m_DebugInfo.shapeCount = m_Scene.NumShapes;
+
+#if UNITY_EDITOR
+            EditorApplication.update += UpdateBrickMap;
+#endif
         }
 
         void OnDisable()
@@ -62,13 +59,19 @@ namespace LevelGeneration.Terrain
             m_BrickMap.Dispose();
             m_DensityEvaluator.Dispose();
             m_ModifiedBricks = null;
-            m_DebugInfo = null;
+
+#if UNITY_EDITOR
+            EditorApplication.update -= UpdateBrickMap;
+#endif
         }
 
         void Update()
         {
             UpdateScene();
+
+#if !UNITY_EDITOR
             UpdateBrickMap();
+#endif
         }
 
         void UpdateScene()
@@ -85,6 +88,43 @@ namespace LevelGeneration.Terrain
                     shapeBrush.IsDirty = false;
                 }
             }
+        }
+
+        void UpdateBrickMap()
+        {
+            Camera camera = GetCamera();
+            if (!camera)
+                return;
+
+            Stopwatch.Start(ref m_DebugInfo.mapUpdateTime);
+
+            float3 scaledCameraPos = camera.transform.position * (1.0f / k_TerrainScale);
+            int3 originIndex = (int3)math.floor(scaledCameraPos / k_BrickSize);
+
+            m_BrickMap.UpdateMap(originIndex, m_Scene, k_TerrainScale, ref m_DensityEvaluator, ref m_DebugInfo);
+
+            Stopwatch.End(ref m_DebugInfo.mapUpdateTime);
+
+            if (m_ModifiedBricks.Count == 0)
+                return;
+
+            Stopwatch.Start(ref m_DebugInfo.recomputationTime);
+
+            int3[] recomputeQueue = new int3[m_ModifiedBricks.Count];
+            m_ModifiedBricks.CopyTo(recomputeQueue);
+
+            m_DebugInfo.recomputedBricks = recomputeQueue.Length;
+
+            foreach (int3 brickIndex in recomputeQueue)
+            {
+                m_BrickMap.EvaluateDensity(brickIndex, m_Scene, k_TerrainScale, ref m_DensityEvaluator, ref m_DebugInfo);
+                m_ModifiedBricks.Remove(brickIndex);
+            }
+
+            Stopwatch.End(ref m_DebugInfo.recomputationTime);
+
+            m_DebugInfo.numBricks = m_BrickMap.NumBricks;
+            m_DebugInfo.numBricksAllocated = m_BrickMap.NumBricksAllocated;
         }
 
         /// <summary>
@@ -141,30 +181,6 @@ namespace LevelGeneration.Terrain
             initialIndex = centreIndex - (volume / 2);
         }
 
-        void UpdateBrickMap()
-        {
-            if (m_ModifiedBricks.Count == 0)
-                return;
-
-            Stopwatch.Start(ref m_DebugInfo.recomputationTime);
-
-            int3[] recomputeQueue = new int3[m_ModifiedBricks.Count];
-            m_ModifiedBricks.CopyTo(recomputeQueue);
-
-            m_DebugInfo.recomputedBricks = recomputeQueue.Length;
-
-            foreach (int3 brickIndex in recomputeQueue)
-            {
-                m_BrickMap.EvaluateBrick(brickIndex, m_Scene, k_TerrainScale, m_DensityEvaluator, out double evaluationTime);
-                m_ModifiedBricks.Remove(brickIndex);
-                m_DebugInfo.AddJobTime(evaluationTime);
-            }
-
-            Stopwatch.End(ref m_DebugInfo.recomputationTime);
-
-            m_DebugInfo.numBricksAllocated = m_BrickMap.NumBricksAllocated;
-        }
-
         /// <summary>
         /// Takes a 3D position in world space out outputs its indices within the terrain.
         /// </summary>
@@ -200,309 +216,233 @@ namespace LevelGeneration.Terrain
             return m_BrickMap.Sample(brickIndex, cellIndex);
         }
 
-        void OnGUI() => m_DebugInfo.DisplayGUI();
-
+        Camera GetCamera() =>
 #if UNITY_EDITOR
-        [SerializeField]
-        bool m_DrawShapeVolumes;
-
-        [SerializeField]
-        bool m_DrawBricks;
-
-        const float k_MaxBrickDrawDistance = 256.0f;
-
-        void OnDrawGizmos()
-        {
-            Gizmos.matrix = Matrix4x4.identity;
-
-            if (m_DrawShapeVolumes) DrawShapeVolumes();
-            if (m_DrawBricks) DrawBrickDebugOverlay();
-        }
-
-        void DrawShapeVolumes()
-        {
-            HashSet<int3> bricksInShapeVolumes = new();
-
-            foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
-            {
-                shapeBrush.EvaluateCurrentShape(out float3 boundsPosition, out float3 boundsVolume);
-                GetBrickVolumeFromAABB(boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
-
-                for (int x = 0; x < volume.x; x++)
-                    for (int y = 0; y < volume.y; y++)
-                        for (int z = 0; z < volume.z; z++)
-                            bricksInShapeVolumes.Add(initialIndex + new int3(x, y, z));
-            }
-
-            Gizmos.color = new Color(1.0f, 0.1f, 0.0f, 0.1f);
-            foreach (int3 brickIndex in bricksInShapeVolumes)
-            {
-                float3 brickSize = k_BrickSize * k_TerrainScale;
-                float3 brickCorner = brickSize * brickIndex;
-                float3 bricksCentre = brickCorner + (brickSize / 2.0f);
-
-                Gizmos.DrawCube(bricksCentre, brickSize);
-            }
-        }
-
-        void DrawBrickDebugOverlay()
-        {
-            Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
-            float viewingDistance;
-
-            float3 worldBrickSize = k_BrickSize * k_TerrainScale;
-            float3 brickCorner;
-            float3 brickCentre;
-
-            foreach (int3 brickIndex in m_BrickMap.GetKeys())
-            {
-                brickCorner = worldBrickSize * brickIndex;
-                brickCentre = brickCorner + (worldBrickSize / 2.0f);
-
-                viewingDistance = math.length((float3)sceneCamera.transform.position - brickCentre);
-                //if (viewingDistance > k_MaxBrickDrawDistance)
-                //    continue;
-
-                Color color = RandomColor(brickIndex);
-                //color.a = 1.0f - (viewingDistance / k_MaxBrickDrawDistance);
-
-                Gizmos.color = color;
-                Gizmos.DrawWireCube(brickCentre, worldBrickSize);
-            }
-        }
-
-        static Color RandomColor(int3 position)
-        {
-            System.Random random = new(position.GetHashCode());
-
-            // Fill rgb channels with random values.
-            int r = random.Next(256);
-            int g = random.Next(256);
-            int b = random.Next(256);
-
-            // Mix with off-white for a pleasing pastel effect.
-            r = (r + 200) / 2;
-            g = (g + 200) / 2;
-            b = (b + 200) / 2;
-
-            // Convert range (0, 256) -> (0.0f, 1.0f) and return.
-            return new Color(
-                r / 256.0f,
-                g / 256.0f,
-                b / 256.0f,
-                1.0f);
-        }
+            Camera.current;
+#else
+            Camera.main;
 #endif
 
-        class DebugInfo
+        struct DensityBrickMap : IDisposable
         {
-            // Constants
-            public int brickSize;
-            public int cellsPerBrick;
-            public int clipmapLevelSize;
+            /*
+             * Note: this should be revised to look like this:
+             * void*[] map;
+             * List<DistanceBrick> bricks;
+             *
+             * However, the map would have to be managed very carefully when the player moves around the scene.
+             * The benefits are fixed memory usage for the pointer map and extremely fast lookup.
+            */
 
-            // Runtime info
-            public int shapeCount;
-            public int numBricksAllocated;
-            public double recomputedBricks;
-            public double recomputationTime;
-
-            readonly double[] densityJobTimes;
-            int densityJobTimeIdx;
-
-            public void AddJobTime(double time)
+            unsafe class DensityBrick : IDisposable
             {
-                densityJobTimes[densityJobTimeIdx] = time;
+                NativeArray<float> density;
 
-                densityJobTimeIdx++;
-                if (densityJobTimeIdx >= densityJobTimes.Length)
-                    densityJobTimeIdx = 0;
+                public bool IsAllocated => density.IsCreated;
+
+                public void Allocate(int size) => density = new(size * size * size, Allocator.Persistent);
+
+                public void Dispose() => density.Dispose();
+
+                public void CopyDenstiy(NativeArray<float> density) => this.density.CopyFrom(density);
+
+                public float Sample(int i) => density[i];
+
+                public void* GetUnsafePtr() => density.GetUnsafePtr();
             }
 
-            double AvarageDensityJobTime()
-            {
-                double t = 0;
-                int count = 0;
-                for (int i = 0; i < densityJobTimes.Length; i++)
-                {
-                    t += densityJobTimes[i];
-                    if (t > 0)
-                        count++;
-                }
-                
-                t /= count;
+            Dictionary<int3, DensityBrick> bricks;
 
-                return t;
+            int mapSize;    // Number of bricks per axis contained in this brick map.
+            int brickSize;  // Number of cells per axis contained in a single brick.
+            int3 lastOriginIndex;
+            int numBricksAllocated;
+
+            /// <summary>
+            /// How many bricks are in the brick map.
+            /// </summary>
+            public readonly int NumBricks => bricks.Count;
+
+            /// <summary>
+            /// How many bricks have had their density arrays allocated. This is an indication of how much memory the brick map is using.
+            /// </summary>
+            public readonly int NumBricksAllocated => numBricksAllocated;
+
+            /// <summary>
+            /// Allocate an empty brick map.
+            /// </summary>
+            public void Allocate(int mapSize, int brickSize)
+            {
+                this.mapSize = mapSize;
+                this.brickSize = brickSize;
+
+                // Allocate brick map with a capacity of (mapSize ^ 3).
+                bricks = new(mapSize * mapSize * mapSize);
+
+                // Initialize last origin post to out of bounds value so the first UpdatMap will pass.
+                lastOriginIndex = int.MaxValue;
             }
 
-            const float k_SingleLineHeight = 20.0f;
-
-            public DebugInfo()
+            /// <summary>
+            /// Dipose all bricks and the brick map.
+            /// </summary>
+            public void Dispose()
             {
-                brickSize = 0;
-                cellsPerBrick = 0;
-                clipmapLevelSize = 0;
+                // Dispose all bricks in brick map.
+                foreach (int3 brickIndex in bricks.Keys)
+                    EnsureBrickDisposed(brickIndex);
 
-                shapeCount = 0;
+                // Dispose brick map.
+                bricks = null;
+
                 numBricksAllocated = 0;
-                recomputedBricks = 0;
-                recomputationTime = 0;
-
-                densityJobTimes = new double[10];
-                densityJobTimeIdx = 0;
             }
 
-            public void DisplayGUI()
+            /// <summary>
+            /// Update the declared bricks based on the position of the observer.
+            /// </summary>
+            public void UpdateMap(int3 originIndex, Scene scene, float terrainScale, ref DensityEvaluator densityEvaluator, ref DebugInfo debugInfo)
             {
-                Rect rect = new(10.0f, 10.0f, 260.0f, k_SingleLineHeight);
+                // Early return if the view point has not changed.
+                if (math.all(originIndex == lastOriginIndex))
+                    return;
 
-                // Constants
-                GUI.Label(rect, $"Brick Size: {brickSize} (Total cells: {cellsPerBrick})");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Brickmap Level Size: {clipmapLevelSize}");
-                rect.y += k_SingleLineHeight;
+                lastOriginIndex = originIndex;
 
-                // Runtime info
-                GUI.Label(rect, $"Shapes: {shapeCount}");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Bricks allocated: {numBricksAllocated}");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Last recomputed bricks: {recomputedBricks}");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Total recomputation time: {Stopwatch.ToMilliseconds(recomputationTime)}ms");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Avarage density evaluation time: {Stopwatch.ToMilliseconds(AvarageDensityJobTime())}ms");
+                // Remove out of bounds entries (loop through existing entries).
+                int3[] loadedBricks = new int3[bricks.Keys.Count];
+                bricks.Keys.CopyTo(loadedBricks, 0);
+
+                foreach (int3 brickIndex in loadedBricks)
+                {
+                    if (!InBounds(brickIndex, originIndex))
+                    {
+                        EnsureBrickDisposed(brickIndex);
+                        bricks.Remove(brickIndex);
+                    }
+                }
+
+                // Add in bounds entries (loop through intended entry indices).
+                for (int x = 0; x < mapSize; x++)
+                {
+                    for (int y = 0; y < mapSize; y++)
+                    {
+                        for (int z = 0; z < mapSize; z++)
+                        {
+                            int3 brickIndex = originIndex + new int3(x, y, z) - (mapSize / 2);
+                            
+                            if (!bricks.ContainsKey(brickIndex))
+                            {
+                                bricks.Add(brickIndex, new DensityBrick());
+                                EvaluateDensity(brickIndex, scene, terrainScale, ref densityEvaluator, ref debugInfo);
+                            }
+                        }
+                    }
+                }
             }
-        }
-    }
 
-    unsafe struct DensityBrickMap : IDisposable
-    {
-        /*
-         * Note: this should be revised to look like this:
-         * void*[] map;
-         * List<DistanceBrick> bricks;
-         *
-         * However, the map would have to be managed very carefully when the player moves around the scene.
-         * The benefits are fixed memory usage for the pointer map and extremely fast lookup.
-        */
+            /// <summary>
+            /// Evaluate the density function of a given brick.
+            /// </summary>
+            public void EvaluateDensity(int3 brickIndex, Scene scene, float terrainScale, ref DensityEvaluator densityEvaluator, ref DebugInfo debugInfo)
+            {
+                // Skip bricks which have not been loaded.
+                if (!bricks.ContainsKey(brickIndex))
+                    return;
 
-        NativeHashMap<int3, DensityBrick> bricks;
+                DensityEvaluationResult result = densityEvaluator.ExecuteJob(scene.Shapes, brickIndex, brickSize, terrainScale);
+                if (result.IntersectsSurface)
+                {
+                    EnsureBrickAllocated(brickIndex);
+                    bricks[brickIndex].CopyDenstiy(result.Density);
+                }
+                else
+                {
+                    EnsureBrickDisposed(brickIndex);
+                }
 
-        int mapSize;    // Number of bricks per axis contained in this brick map.
-        int brickSize;  // Number of cells per axis contained in a single brick.
+                debugInfo.AddJobTime(result.ExecutionTime);
+            }
 
-        public readonly int NumBricksAllocated => bricks.Count;
+            void EnsureBrickAllocated(int3 brickIndex)
+            {
+                if (!bricks[brickIndex].IsAllocated)
+                {
+                    bricks[brickIndex].Allocate(brickSize);
+                    numBricksAllocated++;
+                }
+            }
 
-        public void Allocate(int mapSize, int brickSize)
-        {
-            this.mapSize = mapSize;
-            this.brickSize = brickSize;
-            bricks = new(mapSize * mapSize * mapSize, Allocator.Persistent);
-        }
+            void EnsureBrickDisposed(int3 brickIndex)
+            {
+                if (bricks[brickIndex].IsAllocated)
+                {
+                    bricks[brickIndex].Dispose();
+                    numBricksAllocated--;
+                }
+            }
 
-        public void Dispose()
-        {
-            NativeArray<int3> keys = bricks.GetKeyArray(Allocator.Temp);
-            foreach (int3 brickIndex in keys)
-                bricks[brickIndex].Dispose();
-            keys.Dispose();
-
-            bricks.Dispose();
-        }
-
-        // Called when a brick is updated by a new shape, or existing shape change.
-        public readonly void EvaluateBrick(int3 brickIndex, Scene scene, float terrainScale, DensityEvaluator densityEvaluator, out double evaluationTime)
-        {
-            DensityEvaluationResult result = densityEvaluator.ExecuteJob(scene.Shapes, brickIndex, brickSize, terrainScale);
-
-            evaluationTime = result.ExecutionTime;
-
-            if (result.IntersectsSurface)
+            /// <summary>
+            /// Sample the density function of a given brick at a given local cell index.
+            /// </summary>
+            public readonly float Sample(int3 brickIndex, int3 cellIndex)
             {
                 if (!bricks.ContainsKey(brickIndex))
-                    AllocateBrick(brickIndex);
+                    return 0.0f;
 
-                bricks[brickIndex].SetDenstiy(result.Density);
+                // Flatten cell position to 1d density index.
+                int densityIndex = (cellIndex.z * brickSize * brickSize) + (cellIndex.y * brickSize) + cellIndex.x;
+
+                return bricks[brickIndex].Sample(densityIndex);
             }
-            else
+
+            /// <summary>
+            /// Returns a list of brick indices that have been density allocated.
+            /// </summary>
+            public readonly int3[] GetAllocatedBrickIndices()
             {
-                if (bricks.ContainsKey(brickIndex))
-                    DeallocateBrick(brickIndex);
+                int3[] allocatedBricks = new int3[numBricksAllocated];
+                int i = 0;
+
+                foreach (int3 brickIndex in bricks.Keys)
+                {
+                    if (bricks[brickIndex].IsAllocated)
+                    {
+                        allocatedBricks[i] = brickIndex;
+                        i++;
+                    }
+                }
+
+                return allocatedBricks;
             }
+
+            readonly bool InBounds(int3 brickIndex, int3 originIndex) => math.all(brickIndex < originIndex + mapSize) && math.all(brickIndex > originIndex - mapSize);
         }
 
-        readonly void AllocateBrick(int3 brickIndex)
+        struct Scene : IDisposable
         {
-            DensityBrick brick = new();
-            brick.Allocate(brickSize);
-            bricks.Add(brickIndex, brick);
+            public readonly NativeList<Shape> Shapes => shapes;
+            public readonly int NumShapes => shapes.Length;
+
+            NativeList<Shape> shapes;
+
+            public void Allocate()
+            {
+                shapes = new(Allocator.Persistent);
+            }
+
+            public void Dispose()
+            {
+                shapes.Dispose();
+            }
+
+            public void AddShape(Shape shape) => shapes.Add(shape);
+
+            public void RemoveShape(int index) => shapes.RemoveAt(index);
+
+            public void EditShape(int index, Shape shape) => shapes[index] = shape;
+
+            public void Clear() => shapes.Clear();
         }
-
-        readonly void DeallocateBrick(int3 brickIndex)
-        {
-            bricks[brickIndex].Dispose();
-            bricks.Remove(brickIndex);
-        }
-
-        public readonly float Sample(int3 brickIndex, int3 cellIndex)
-        {
-            if (!bricks.ContainsKey(brickIndex))
-                return 0.0f;
-
-            int i = (cellIndex.z * brickSize * brickSize) + (cellIndex.y * brickSize) + cellIndex.x;
-
-            return bricks[brickIndex].Sample(i);
-        }
-
-        public readonly int3[] GetKeys()
-        {
-            NativeArray<int3> nativeKeys = bricks.GetKeyArray(Allocator.Temp);
-            int3[] keys = nativeKeys.ToArray();
-            nativeKeys.Dispose();
-
-            return keys;
-        }
-
-        struct DensityBrick : IDisposable
-        {
-            NativeArray<float> density;
-
-            public void Allocate(int size) => density = new(size * size * size, Allocator.Persistent);
-
-            public void Dispose() => density.Dispose();
-
-            public void SetDenstiy(NativeArray<float> density) => this.density.CopyFrom(density);
-
-            public float Sample(int i) => density[i];
-
-            public readonly void* GetPointer() => density.GetUnsafePtr();
-        }
-    }
-
-    struct Scene : IDisposable
-    {
-        public readonly NativeList<Shape> Shapes => shapes;
-        public readonly int NumShapes => shapes.Length;
-
-        NativeList<Shape> shapes;
-
-        public void Allocate()
-        {
-            shapes = new(Allocator.Persistent);
-        }
-
-        public void Dispose()
-        {
-            shapes.Dispose();
-        }
-
-        public void AddShape(Shape shape) => shapes.Add(shape);
-
-        public void RemoveShape(int index) => shapes.RemoveAt(index);
-
-        public void EditShape(int index, Shape shape) => shapes[index] = shape;
-
-        public void Clear() => shapes.Clear();
     }
 }
