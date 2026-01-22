@@ -75,6 +75,8 @@ namespace LevelGeneration.Terrain
             {
                 Rect rect = new(10.0f, 10.0f, 260.0f, k_SingleLineHeight);
 
+                int brickMapMemoryUsageBytes = numBricksAllocated * cellsPerBrick * sizeof(float);
+
                 // Constants
                 GUI.Label(rect, $"Brick Size: {brickSize} (Total cells: {cellsPerBrick})");
                 rect.y += k_SingleLineHeight;
@@ -87,6 +89,8 @@ namespace LevelGeneration.Terrain
                 GUI.Label(rect, $"Total bricks: {numBricks}");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Bricks allocated: {numBricksAllocated}");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Approximate memory: {brickMapMemoryUsageBytes / 1000}kb");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Last recomputed bricks: {recomputedBricks}");
                 rect.y += k_SingleLineHeight;
@@ -117,26 +121,37 @@ namespace LevelGeneration.Terrain
         bool m_DrawShapeVolumes;
 
         [SerializeField]
-        bool m_DrawBricks;
+        bool m_DrawLoadedBricks;
 
         [SerializeField]
-        bool m_DoLogMessages;
-        
+        bool m_DrawAllocatedBricks;
+
+        [SerializeField]
+        bool m_DrawBrickMapBorders;
+
+        [SerializeField]
+        bool m_DetachCamera;
+
         void OnDrawGizmos()
         {
+            if (!isActiveAndEnabled)
+                return;
+
             Gizmos.matrix = Matrix4x4.identity;
 
             if (m_DrawShapeVolumes) DrawShapeVolumes();
-            if (m_DrawBricks) DrawBrickDebugOverlay();
+            if (m_DrawLoadedBricks) DrawLoadedBricks();
+            if (m_DrawAllocatedBricks) DrawAllocatedBricks();
+            if (m_DrawBrickMapBorders) DrawBrickMapBorders();
         }
 
         void DrawShapeVolumes()
         {
             HashSet<int3> bricksInShapeVolumes = new();
 
-            foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
+            foreach (Shape shape in m_Scene.Shapes)
             {
-                shapeBrush.EvaluateCurrentShape(out float3 boundsPosition, out float3 boundsVolume);
+                shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                 GetBrickVolumeFromAABB(boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
 
                 for (int x = 0; x < volume.x; x++)
@@ -156,7 +171,43 @@ namespace LevelGeneration.Terrain
             }
         }
 
-        void DrawBrickDebugOverlay()
+        void DrawBrickMapBorders()
+        {
+            float3 scaledCameraPos = GetObserverPosition() * (1.0f / k_TerrainScale);
+            int3 originIndex = (int3)math.floor(scaledCameraPos / k_BrickSize);
+
+            float3 brickmapLevelCentre = k_BrickSize * k_TerrainScale * (float3)originIndex;
+            float3 brickMapLevelSize = k_BrickmapLevelSize * k_BrickSize * k_TerrainScale;
+
+            Gizmos.color = new Color(1.0f, 1.0f, 1.0f, 0.5f);
+            Gizmos.DrawWireCube(brickmapLevelCentre, brickMapLevelSize);
+        }
+
+        void DrawLoadedBricks()
+        {
+            Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
+            float viewingDistance;
+
+            float3 worldBrickSize = k_BrickSize * k_TerrainScale;
+            float3 brickCorner;
+            float3 brickCentre;
+
+            foreach (int3 brickIndex in m_BrickMap.GetLoadedBrickIndices())
+            {
+                brickCorner = worldBrickSize * brickIndex;
+                brickCentre = brickCorner + (worldBrickSize / 2.0f);
+
+                viewingDistance = math.length((float3)sceneCamera.transform.position - brickCentre);
+
+                Color color = RandomColor(brickIndex);
+                color.a = math.clamp(1.0f - (viewingDistance / 256.0f), 0.05f, 1.0f);
+
+                Gizmos.color = color;
+                Gizmos.DrawWireCube(brickCentre, worldBrickSize);
+            }
+        }
+
+        void DrawAllocatedBricks()
         {
             Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
             float viewingDistance;

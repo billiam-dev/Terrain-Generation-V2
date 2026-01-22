@@ -53,7 +53,7 @@ namespace LevelGeneration.Terrain
         /// <summary>
         /// Compute a world space AABB for the shape.
         /// </summary>
-        public readonly float3 ComputeVolume()
+        public readonly void ComputeVolume(out float3 position, out float3 volume)
         {
             // Compute an accurate bounding volume for the shape in world space.
             float3 boundsVolume = 0;
@@ -119,7 +119,8 @@ namespace LevelGeneration.Terrain
                 (maxZ - minZ) / 2.0f
                 );
 
-            return boundsVolume;
+            volume = boundsVolume;
+            position = Matrix.t;
         }
     }
 

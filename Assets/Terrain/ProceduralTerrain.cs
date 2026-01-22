@@ -16,8 +16,7 @@ namespace LevelGeneration.Terrain
         DensityBrickMap m_BrickMap; // Note: eventually this can be converted to BrickMapLevels, for multiple LODs stretching into the horizen.
         DensityEvaluator m_DensityEvaluator;
 
-        ShapeBrush[] m_ShapeBrushes;
-        HashSet<int3> m_ModifiedBricks; // Note: this might be better off inside DensityBrickMap.
+        HashSet<int3> m_ModifiedBricks; // Note: this might be better off inside DensityBrickMap?
 
         public float WorldCellSize => k_TerrainScale;                // Uniform size in world units of a single cell.
         public float WorldBrickSize => k_BrickSize * k_TerrainScale; // Uniform size in world units of a single brick.
@@ -31,22 +30,15 @@ namespace LevelGeneration.Terrain
         {
             m_Scene.Allocate();
             m_BrickMap.Allocate(k_BrickmapLevelSize, k_BrickSize);
+            
+            m_DensityEvaluator = new();
             m_DensityEvaluator.Allocate(k_CellsPerBrick);
+            
             m_ModifiedBricks = new();
 
             InitializeDebug();
 
-            // Build initial shape queue.
-            m_ShapeBrushes = GetComponentsInChildren<ShapeBrush>(false);
-            foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
-            {
-                m_Scene.AddShape(shapeBrush.EvaluateNewShape(out float3 oldPosition, out float3 oldVolume, out float3 newPosition, out float3 newVolume));
-                MarkModifiedBricksFromAABB(oldPosition, oldVolume);
-                MarkModifiedBricksFromAABB(newPosition, newVolume);
-                shapeBrush.IsDirty = false;
-            }
-
-            m_DebugInfo.shapeCount = m_Scene.NumShapes;
+            m_DebugInfo.shapeCount = 0;
 
 #if UNITY_EDITOR
             EditorApplication.update += UpdateBrickMap;
@@ -57,7 +49,10 @@ namespace LevelGeneration.Terrain
         {
             m_Scene.Dispose();
             m_BrickMap.Dispose();
+            
             m_DensityEvaluator.Dispose();
+            m_DensityEvaluator = null;
+            
             m_ModifiedBricks = null;
 
 #if UNITY_EDITOR
@@ -65,45 +60,101 @@ namespace LevelGeneration.Terrain
 #endif
         }
 
+#if !UNITY_EDITOR
         void Update()
         {
-            UpdateScene();
-
-#if !UNITY_EDITOR
             UpdateBrickMap();
+        }
 #endif
-        }
 
-        void UpdateScene()
+        /// <summary>
+        /// Add a shape to the terrain, returns an index which acts as a handle to that shape.
+        /// </summary>
+        public int AddShape(Shape shape)
         {
-            for (int i = 0; i < m_ShapeBrushes.Length; i++)
-            {
-                ShapeBrush shapeBrush = m_ShapeBrushes[i];
+            shape.ComputeVolume(out float3 position, out float3 volume);
+            MarkModifiedBricksFromAABB(position, volume);
 
-                if (shapeBrush.IsDirty)
-                {
-                    m_Scene.EditShape(i, shapeBrush.EvaluateNewShape(out float3 oldPosition, out float3 oldVolume, out float3 newPosition, out float3 newVolume));
-                    MarkModifiedBricksFromAABB(oldPosition, oldVolume);
-                    MarkModifiedBricksFromAABB(newPosition, newVolume);
-                    shapeBrush.IsDirty = false;
-                }
-            }
+            m_DebugInfo.shapeCount = m_Scene.NumShapes;
+
+            return m_Scene.AddShape(shape);
         }
 
+        /// <summary>
+        /// Remove a shape from the terrain using its index handle.
+        /// </summary>
+        public bool RemoveShape(int index)
+        {
+            if (index < m_Scene.NumShapes)
+            {
+                m_Scene.Shapes[index].ComputeVolume(out float3 position, out float3 volume);
+                MarkModifiedBricksFromAABB(position, volume);
+
+                m_Scene.RemoveShape(index);
+
+                m_DebugInfo.shapeCount = m_Scene.NumShapes;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Replace an existing shape using its index handle.
+        /// </summary>
+        public bool ReplaceShape(int index, Shape shape)
+        {
+            if (index < m_Scene.NumShapes)
+            {
+                // Mark old shape bricks as modified.
+                m_Scene.Shapes[index].ComputeVolume(out float3 position, out float3 volume);
+                MarkModifiedBricksFromAABB(position, volume);
+
+                // Mark new shape bricks as modified.
+                shape.ComputeVolume(out position, out volume);
+                MarkModifiedBricksFromAABB(position, volume);
+                
+                m_Scene.ReplaceShape(index, shape);
+
+                m_DebugInfo.shapeCount = m_Scene.NumShapes;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Clear all shapes in the scene.
+        /// </summary>
+        public void ClearShapes()
+        {
+            m_BrickMap.ClearDensity();
+            m_Scene.Clear();
+        }
+
+        /// <summary>
+        /// Update the brick map based on the camera position and shapes in the Scene.
+        /// </summary>
         void UpdateBrickMap()
         {
-            Camera camera = GetCamera();
-            if (!camera)
-                return;
+            /*
+             * Update loaded bricks with the camera position.
+            */
 
             Stopwatch.Start(ref m_DebugInfo.mapUpdateTime);
 
-            float3 scaledCameraPos = camera.transform.position * (1.0f / k_TerrainScale);
+            float3 scaledCameraPos = GetObserverPosition() * (1.0f / k_TerrainScale);
             int3 originIndex = (int3)math.floor(scaledCameraPos / k_BrickSize);
 
-            m_BrickMap.UpdateMap(originIndex, m_Scene, k_TerrainScale, ref m_DensityEvaluator, ref m_DebugInfo);
+            m_BrickMap.UpdateMap(originIndex, m_Scene, k_TerrainScale, m_DensityEvaluator, ref m_DebugInfo);
 
             Stopwatch.End(ref m_DebugInfo.mapUpdateTime);
+
+            /*
+             * Handle bricks marked for recomputation.
+            */
 
             if (m_ModifiedBricks.Count == 0)
                 return;
@@ -113,16 +164,15 @@ namespace LevelGeneration.Terrain
             int3[] recomputeQueue = new int3[m_ModifiedBricks.Count];
             m_ModifiedBricks.CopyTo(recomputeQueue);
 
-            m_DebugInfo.recomputedBricks = recomputeQueue.Length;
-
             foreach (int3 brickIndex in recomputeQueue)
             {
-                m_BrickMap.EvaluateDensity(brickIndex, m_Scene, k_TerrainScale, ref m_DensityEvaluator, ref m_DebugInfo);
+                m_BrickMap.EvaluateDensity(brickIndex, m_Scene, k_TerrainScale, m_DensityEvaluator, ref m_DebugInfo);
                 m_ModifiedBricks.Remove(brickIndex);
             }
 
             Stopwatch.End(ref m_DebugInfo.recomputationTime);
 
+            m_DebugInfo.recomputedBricks = recomputeQueue.Length;
             m_DebugInfo.numBricks = m_BrickMap.NumBricks;
             m_DebugInfo.numBricksAllocated = m_BrickMap.NumBricksAllocated;
         }
@@ -183,6 +233,7 @@ namespace LevelGeneration.Terrain
 
         /// <summary>
         /// Takes a 3D position in world space out outputs its indices within the terrain.
+        /// Public for debugging purposes.
         /// </summary>
         public void ComputeIndices(float3 positionWS, out int3 globalCellIndex, out int3 brickIndex, out int3 localCellIndex)
         {
@@ -216,12 +267,25 @@ namespace LevelGeneration.Terrain
             return m_BrickMap.Sample(brickIndex, cellIndex);
         }
 
-        Camera GetCamera() =>
+        float3 GetObserverPosition()
+        {
 #if UNITY_EDITOR
-            Camera.current;
-#else
-            Camera.main;
+            if (m_DetachCamera)
+                return transform.position;
 #endif
+
+            Camera camera =
+            #if UNITY_EDITOR
+                Camera.current;
+#else
+                Camera.main;
+#endif
+
+            if (!camera)
+                return 0;
+
+            return camera.transform.position;
+        }
 
         struct DensityBrickMap : IDisposable
         {
@@ -253,8 +317,9 @@ namespace LevelGeneration.Terrain
 
             Dictionary<int3, DensityBrick> bricks;
 
-            int mapSize;    // Number of bricks per axis contained in this brick map.
-            int brickSize;  // Number of cells per axis contained in a single brick.
+            int mapSize;      // Number of bricks per axis contained in this brick map.
+            int halfMapSize;  // Number of bricks per axis either side of 0, 0, 0.
+            int brickSize;    // Number of cells per axis contained in a single brick.
             int3 lastOriginIndex;
             int numBricksAllocated;
 
@@ -274,6 +339,7 @@ namespace LevelGeneration.Terrain
             public void Allocate(int mapSize, int brickSize)
             {
                 this.mapSize = mapSize;
+                halfMapSize = mapSize / 2;
                 this.brickSize = brickSize;
 
                 // Allocate brick map with a capacity of (mapSize ^ 3).
@@ -301,7 +367,7 @@ namespace LevelGeneration.Terrain
             /// <summary>
             /// Update the declared bricks based on the position of the observer.
             /// </summary>
-            public void UpdateMap(int3 originIndex, Scene scene, float terrainScale, ref DensityEvaluator densityEvaluator, ref DebugInfo debugInfo)
+            public void UpdateMap(int3 originIndex, Scene scene, float terrainScale, DensityEvaluator densityEvaluator, ref DebugInfo debugInfo)
             {
                 // Early return if the view point has not changed.
                 if (math.all(originIndex == lastOriginIndex))
@@ -329,12 +395,12 @@ namespace LevelGeneration.Terrain
                     {
                         for (int z = 0; z < mapSize; z++)
                         {
-                            int3 brickIndex = originIndex + new int3(x, y, z) - (mapSize / 2);
+                            int3 brickIndex = originIndex + new int3(x, y, z) - halfMapSize;
                             
                             if (!bricks.ContainsKey(brickIndex))
                             {
                                 bricks.Add(brickIndex, new DensityBrick());
-                                EvaluateDensity(brickIndex, scene, terrainScale, ref densityEvaluator, ref debugInfo);
+                                EvaluateDensity(brickIndex, scene, terrainScale, densityEvaluator, ref debugInfo);
                             }
                         }
                     }
@@ -344,11 +410,13 @@ namespace LevelGeneration.Terrain
             /// <summary>
             /// Evaluate the density function of a given brick.
             /// </summary>
-            public void EvaluateDensity(int3 brickIndex, Scene scene, float terrainScale, ref DensityEvaluator densityEvaluator, ref DebugInfo debugInfo)
+            public void EvaluateDensity(int3 brickIndex, Scene scene, float terrainScale, DensityEvaluator densityEvaluator, ref DebugInfo debugInfo)
             {
                 // Skip bricks which have not been loaded.
                 if (!bricks.ContainsKey(brickIndex))
                     return;
+
+                // TODO: only execute job with intersecting shapes.
 
                 DensityEvaluationResult result = densityEvaluator.ExecuteJob(scene.Shapes, brickIndex, brickSize, terrainScale);
                 if (result.IntersectsSurface)
@@ -362,6 +430,18 @@ namespace LevelGeneration.Terrain
                 }
 
                 debugInfo.AddJobTime(result.ExecutionTime);
+            }
+
+            /// <summary>
+            /// Clear (deallocate) all density bricks, perform when removing all shapes from the scene to quickly reset the brickmap.
+            /// </summary>
+            public void ClearDensity()
+            {
+                if (bricks != null)
+                {
+                    foreach (int3 brickIndex in bricks.Keys)
+                        EnsureBrickDisposed(brickIndex);
+                }
             }
 
             void EnsureBrickAllocated(int3 brickIndex)
@@ -397,7 +477,19 @@ namespace LevelGeneration.Terrain
             }
 
             /// <summary>
-            /// Returns a list of brick indices that have been density allocated.
+            /// Returns an array of all brick indices that are loaded.
+            /// </summary>
+            /// <returns></returns>
+            public readonly int3[] GetLoadedBrickIndices()
+            {
+                int3[] loadedBricks = new int3[bricks.Count];
+                bricks.Keys.CopyTo(loadedBricks, 0);
+
+                return loadedBricks;
+            }
+
+            /// <summary>
+            /// Returns a list of brick indices that have been allocated.
             /// </summary>
             public readonly int3[] GetAllocatedBrickIndices()
             {
@@ -416,7 +508,7 @@ namespace LevelGeneration.Terrain
                 return allocatedBricks;
             }
 
-            readonly bool InBounds(int3 brickIndex, int3 originIndex) => math.all(brickIndex < originIndex + mapSize) && math.all(brickIndex > originIndex - mapSize);
+            readonly bool InBounds(int3 brickIndex, int3 originIndex) => math.all(brickIndex < originIndex + halfMapSize) && math.all(brickIndex > originIndex - halfMapSize);
         }
 
         struct Scene : IDisposable
@@ -436,13 +528,27 @@ namespace LevelGeneration.Terrain
                 shapes.Dispose();
             }
 
-            public void AddShape(Shape shape) => shapes.Add(shape);
+            public int AddShape(Shape shape)
+            {
+                shapes.Add(shape);
+                return shapes.Length;
+            }
 
-            public void RemoveShape(int index) => shapes.RemoveAt(index);
+            public void RemoveShape(int index)
+            {
+                shapes.RemoveAt(index);
+            }
 
-            public void EditShape(int index, Shape shape) => shapes[index] = shape;
+            public void ReplaceShape(int index, Shape shape)
+            {
+                shapes[index] = shape;
+            }
 
-            public void Clear() => shapes.Clear();
+            public void Clear()
+            {
+                if (shapes.IsCreated)
+                    shapes.Clear();
+            }
         }
     }
 }

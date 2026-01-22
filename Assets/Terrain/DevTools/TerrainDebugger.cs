@@ -3,7 +3,7 @@ using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain
+namespace LevelGeneration.Terrain.DevTools
 {
     public class TerrainDebugger : MonoBehaviour
     {
@@ -12,6 +12,9 @@ namespace LevelGeneration.Terrain
 
         void OnDrawGizmos()
         {
+            if (!isActiveAndEnabled)
+                return;
+
             if (!m_Terrain)
             {
                 Handles.Label(transform.position, "No terrain assigned.");

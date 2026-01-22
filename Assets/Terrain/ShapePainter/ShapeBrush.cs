@@ -2,7 +2,7 @@ using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain
+namespace LevelGeneration.Terrain.ShapePainter
 {
     [DisallowMultipleComponent]
     public class ShapeBrush : MonoBehaviour
@@ -136,12 +136,7 @@ namespace LevelGeneration.Terrain
             }
         }
 
-        Shape m_Shape;
-
-        public Shape EvaluateNewShape(out float3 oldPosition, out float3 oldVolume, out float3 newPosition, out float3 newVolume)
-        {
-            Shape oldShape = m_Shape;
-            Shape newShape = new(
+        public Shape Shape => new(
             transform.position,
             transform.rotation,
             transform.lossyScale,
@@ -154,36 +149,6 @@ namespace LevelGeneration.Terrain
             m_Dimention2,
             m_Dimention3
             );
-
-            // Apply old and new shape volumes to update brick array.
-            if (!oldShape.IsNull)
-            {
-                oldPosition = oldShape.Matrix.t;
-                oldVolume = oldShape.ComputeVolume();
-            }
-            else
-            {
-                oldPosition = 0;
-                oldVolume = 0;
-            }
-
-            newPosition = newShape.Matrix.t;
-            newVolume = newShape.ComputeVolume();
-
-            // Update current shape.
-            m_Shape = newShape;
-
-            // Return the new shape.
-            return m_Shape;
-        }
-
-        public Shape EvaluateCurrentShape(out float3 position, out float3 volume)
-        {
-            position = m_Shape.Matrix.t;
-            volume = m_Shape.ComputeVolume();
-
-            return m_Shape;
-        }
 
 #if UNITY_EDITOR
         void OnValidate()
@@ -245,8 +210,7 @@ namespace LevelGeneration.Terrain
         {
             Gizmos.matrix = Matrix4x4.identity;
 
-            float3 position = m_Shape.Matrix.t;
-            float3 volume = m_Shape.ComputeVolume();
+            Shape.ComputeVolume(out float3 position, out float3 volume);
 
             Gizmos.color = new(0, 1, 0, 0.1f);
             Gizmos.DrawWireCube(position, volume);
