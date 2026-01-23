@@ -146,6 +146,10 @@ namespace LevelGeneration.Terrain
             Stopwatch.Start(ref m_DebugInfo.mapUpdateTime);
 
             float3 scaledCameraPos = GetObserverPosition() * (1.0f / k_TerrainScale);
+
+            // Offset camera pos by half the brick size in world units so it uses the halfway point within bricks to determine when to shift the terrain origin.
+            scaledCameraPos += k_BrickSize * k_TerrainScale / 2.0f;
+            
             int3 originIndex = (int3)math.floor(scaledCameraPos / k_BrickSize);
 
             m_BrickMap.UpdateMap(originIndex, m_Scene, k_TerrainScale, m_DensityEvaluator, ref m_DebugInfo);

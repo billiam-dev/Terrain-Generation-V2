@@ -90,7 +90,7 @@ namespace LevelGeneration.Terrain
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Bricks allocated: {numBricksAllocated}");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Approximate memory: {brickMapMemoryUsageBytes / 1000}kb");
+                GUI.Label(rect, $"Approximate memory: {brickMapMemoryUsageBytes / 1024}kb");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Last recomputed bricks: {recomputedBricks}");
                 rect.y += k_SingleLineHeight;

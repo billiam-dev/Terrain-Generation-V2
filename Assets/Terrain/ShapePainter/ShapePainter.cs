@@ -15,15 +15,6 @@ namespace LevelGeneration.Terrain.ShapePainter
         void OnEnable()
         {
             m_Terrain = GetComponent<ProceduralTerrain>();
-
-            m_ShapeBrushes = GetComponentsInChildren<ShapeBrush>(true);
-            m_TotalShapeBrushes = m_ShapeBrushes.Length;
-
-            foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
-            {
-                m_Terrain.AddShape(shapeBrush.Shape);
-                shapeBrush.IsDirty = false;
-            }
         }
 
         void OnDisable()
@@ -37,6 +28,24 @@ namespace LevelGeneration.Terrain.ShapePainter
 
         void Update()
         {
+            // TODO: do this properly.
+
+            m_ShapeBrushes = GetComponentsInChildren<ShapeBrush>(true);
+
+            // Build queue
+            if (m_TotalShapeBrushes != m_ShapeBrushes.Length)
+            {
+                m_Terrain.ClearShapes();
+                foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
+                {
+                    m_Terrain.AddShape(shapeBrush.Shape);
+                    shapeBrush.IsDirty = false;
+                }
+
+                m_TotalShapeBrushes = m_ShapeBrushes.Length;
+            }
+
+            // Modify Queue
             for (int i = 0; i < m_ShapeBrushes.Length; i++)
             {
                 ShapeBrush shapeBrush = m_ShapeBrushes[i];
