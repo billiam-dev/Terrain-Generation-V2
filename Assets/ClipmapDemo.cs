@@ -12,7 +12,7 @@ namespace LevelGeneration.Terrain.DevTools
 
         const int k_ChunkSize = 16;       // Voxels per axis contained within a single chunk.
         const int k_ClipmapSize = 8;      // Chunks per axis contained within each clipmap level.
-        const int k_MaxClipmapLevels = 5; // Total number of clipmap levels.
+        const int k_MaxClipmapLevels = 6; // Total number of clipmap levels.
 
         readonly Color[] m_LevelColors = new Color[k_MaxClipmapLevels]
         {
@@ -20,7 +20,8 @@ namespace LevelGeneration.Terrain.DevTools
             new(0.0f, 1.0f, 0.2f),
             new(0.2f, 0.0f, 1.0f),
             new(0.8f, 0.8f, 0.8f),
-            new(0.4f, 0.4f, 0.4f)
+            new(0.4f, 0.4f, 0.4f),
+            new(0.1f, 0.1f, 0.1f)
         };
 
         int3[] m_ClipmapLevelOrigins;

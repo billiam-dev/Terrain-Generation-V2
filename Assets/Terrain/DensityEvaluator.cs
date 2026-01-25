@@ -34,7 +34,7 @@ namespace LevelGeneration.Terrain
             negativeValueFound.Dispose();
         }
 
-        public DensityEvaluationResult ExecuteJob(NativeList<Shape> shapes, int3 brickIndex, int brickSize, float terrainScale)
+        public DensityEvaluationResult ExecuteJob(NativeList<Shape> shapes, int3 brickIndex, int brickSize, int brickMapLevel, float terrainScale)
         {
             positiveValueFound.Value = false;
             negativeValueFound.Value = false;
@@ -45,6 +45,7 @@ namespace LevelGeneration.Terrain
                 initialValue = 32.0f,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
+                stepSize = (int)math.pow(2, brickMapLevel),
                 terrainScale = terrainScale,
                 density = workingDensityData,
                 positiveValueFound = positiveValueFound,
@@ -68,6 +69,7 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public float initialValue;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
+            [ReadOnly] public int stepSize;
             [ReadOnly] public float terrainScale;
 
             [NativeDisableParallelForRestriction]
@@ -93,7 +95,7 @@ namespace LevelGeneration.Terrain
                 int y = x / brickSize;
                 x -= y * brickSize;
 
-                int3 globalCellIndex = (brickIndex * brickSize) + new int3(x, y, z);
+                int3 globalCellIndex = (brickIndex * brickSize) + (new int3(x, y, z) * stepSize);
                 float3 worldPosition = (float3)globalCellIndex * terrainScale;
 
                 // Apply shapes.

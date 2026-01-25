@@ -7,6 +7,45 @@ namespace LevelGeneration.Terrain
 {
     public partial class ProceduralTerrain : MonoBehaviour
     {
+#if UNITY_EDITOR
+        partial class SDFTerrain
+        {
+            public void DrawLoadedBricks()
+            {
+                Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
+                float3 worldBrickSize = k_BrickSize * k_TerrainScale;
+
+                foreach (DensityBrickMap brickMap in brickMapLevels)
+                    foreach (int3 brickIndex in brickMap.GetLoadedBrickIndices())
+                        DrawBrick(brickMap, sceneCamera, worldBrickSize, brickIndex);
+            }
+
+            public void DrawAllocatedBricks()
+            {
+                Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
+                float3 worldBrickSize = k_BrickSize * k_TerrainScale;
+
+                foreach (DensityBrickMap brickMap in brickMapLevels)
+                    foreach (int3 brickIndex in brickMap.GetAllocatedBrickIndices())
+                        DrawBrick(brickMap, sceneCamera, worldBrickSize, brickIndex);
+            }
+
+            void DrawBrick(DensityBrickMap brickMap, Camera camera, float3 worldBrickSize, int3 brickIndex)
+            {
+                float3 brickCorner = worldBrickSize * brickIndex;
+                float3 brickCentre = brickCorner + (worldBrickSize / 2.0f);
+
+                float viewingDistance = math.length((float3)camera.transform.position - brickCentre);
+
+                Color color = RandomColor(brickIndex);
+                color.a = math.clamp(1.0f - (viewingDistance / 256.0f), 0.05f, 1.0f);
+
+                Gizmos.color = color;
+                Gizmos.DrawWireCube(brickCentre, worldBrickSize * brickMap.SizeMultiplier);
+            }
+#endif
+        }
+
         struct DebugInfo
         {
             // Brickmap constants
@@ -109,7 +148,7 @@ namespace LevelGeneration.Terrain
             m_DebugInfo = new(0)
             {
                 brickSize = k_BrickSize,
-                cellsPerBrick = k_CellsPerBrick,
+                cellsPerBrick = k_BrickSize * k_BrickSize * k_BrickSize,
                 brickmapLevelSize = k_BrickmapLevelSize
             };
         }
@@ -140,8 +179,8 @@ namespace LevelGeneration.Terrain
             Gizmos.matrix = Matrix4x4.identity;
 
             if (m_DrawShapeVolumes) DrawShapeVolumes();
-            if (m_DrawLoadedBricks) DrawLoadedBricks();
-            if (m_DrawAllocatedBricks) DrawAllocatedBricks();
+            if (m_DrawLoadedBricks) m_Terrain.DrawLoadedBricks();
+            if (m_DrawAllocatedBricks) m_Terrain.DrawAllocatedBricks();
             if (m_DrawBrickMapBorders) DrawBrickMapBorders();
         }
 
@@ -152,7 +191,7 @@ namespace LevelGeneration.Terrain
             foreach (Shape shape in m_Scene.Shapes)
             {
                 shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
-                GetBrickVolumeFromAABB(boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
+                m_Terrain.GetBrickVolumeFromAABB(0, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
 
                 for (int x = 0; x < volume.x; x++)
                     for (int y = 0; y < volume.y; y++)
@@ -173,6 +212,8 @@ namespace LevelGeneration.Terrain
 
         void DrawBrickMapBorders()
         {
+            // TODO: Draw other levels
+
             float3 scaledCameraPos = GetObserverPosition() * (1.0f / k_TerrainScale);
             int3 originIndex = (int3)math.floor(scaledCameraPos / k_BrickSize);
 
@@ -181,54 +222,6 @@ namespace LevelGeneration.Terrain
 
             Gizmos.color = new Color(1.0f, 1.0f, 1.0f, 0.5f);
             Gizmos.DrawWireCube(brickmapLevelCentre, brickMapLevelSize);
-        }
-
-        void DrawLoadedBricks()
-        {
-            Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
-            float viewingDistance;
-
-            float3 worldBrickSize = k_BrickSize * k_TerrainScale;
-            float3 brickCorner;
-            float3 brickCentre;
-
-            foreach (int3 brickIndex in m_BrickMap.GetLoadedBrickIndices())
-            {
-                brickCorner = worldBrickSize * brickIndex;
-                brickCentre = brickCorner + (worldBrickSize / 2.0f);
-
-                viewingDistance = math.length((float3)sceneCamera.transform.position - brickCentre);
-
-                Color color = RandomColor(brickIndex);
-                color.a = math.clamp(1.0f - (viewingDistance / 256.0f), 0.05f, 1.0f);
-
-                Gizmos.color = color;
-                Gizmos.DrawWireCube(brickCentre, worldBrickSize);
-            }
-        }
-
-        void DrawAllocatedBricks()
-        {
-            Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
-            float viewingDistance;
-
-            float3 worldBrickSize = k_BrickSize * k_TerrainScale;
-            float3 brickCorner;
-            float3 brickCentre;
-
-            foreach (int3 brickIndex in m_BrickMap.GetAllocatedBrickIndices())
-            {
-                brickCorner = worldBrickSize * brickIndex;
-                brickCentre = brickCorner + (worldBrickSize / 2.0f);
-
-                viewingDistance = math.length((float3)sceneCamera.transform.position - brickCentre);
-
-                Color color = RandomColor(brickIndex);
-                color.a = math.clamp(1.0f - (viewingDistance / 256.0f), 0.05f, 1.0f);
-
-                Gizmos.color = color;
-                Gizmos.DrawWireCube(brickCentre, worldBrickSize);
-            }
         }
 
         static Color RandomColor(int3 position)

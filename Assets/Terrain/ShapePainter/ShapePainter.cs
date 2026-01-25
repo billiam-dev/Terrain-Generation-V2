@@ -38,8 +38,11 @@ namespace LevelGeneration.Terrain.ShapePainter
                 m_Terrain.ClearShapes();
                 foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
                 {
-                    m_Terrain.AddShape(shapeBrush.Shape);
-                    shapeBrush.IsDirty = false;
+                    if (shapeBrush.isActiveAndEnabled)
+                    {
+                        m_Terrain.AddShape(shapeBrush.Shape);
+                        shapeBrush.IsDirty = false;
+                    }
                 }
 
                 m_TotalShapeBrushes = m_ShapeBrushes.Length;
@@ -50,10 +53,13 @@ namespace LevelGeneration.Terrain.ShapePainter
             {
                 ShapeBrush shapeBrush = m_ShapeBrushes[i];
 
-                if (shapeBrush.IsDirty)
+                if (shapeBrush.isActiveAndEnabled)
                 {
-                    m_Terrain.ReplaceShape(i, shapeBrush.Shape);
-                    shapeBrush.IsDirty = false;
+                    if (shapeBrush.IsDirty)
+                    {
+                        m_Terrain.ReplaceShape(i, shapeBrush.Shape);
+                        shapeBrush.IsDirty = false;
+                    }
                 }
             }
         }
