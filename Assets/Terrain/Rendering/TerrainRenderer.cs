@@ -35,7 +35,7 @@ namespace LevelGeneration.Terrain.Rendering
 
         void Render()
         {
-            TerrainRenderingData renderingData = m_Terrain.RenderingData;
+            //TerrainRenderingData renderingData = m_Terrain.RenderingData;
         }
 
         // The clipmap level class just needs to mesh and draw the contents of a brickmap level. It has no knowledge of where the observer is.

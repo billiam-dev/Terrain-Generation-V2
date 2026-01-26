@@ -166,7 +166,7 @@ MonoBehaviour:
   m_DistanceFunction: 0
   m_BlendMode: 0
   m_Smoothness: 1
-  m_Dimention1: 12
+  m_Dimention1: 14
   m_Dimention2: 1
   m_Dimention3: 4
 --- !u!1 &231485490
@@ -378,7 +378,7 @@ Transform:
   m_GameObject: {fileID: 337805761}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 9, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 1.46}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -398,11 +398,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 37c5e78ddc5b9cd4d87e75d5ea67129f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ProceduralTerrain
-  m_DrawShapeVolumes: 0
-  m_DrawLoadedBricks: 0
-  m_DrawAllocatedBricks: 1
-  m_DrawBrickMapBorders: 1
-  m_DetachCamera: 1
+  BrickmapDebugLevel: 2
+  EnableShapeVolumes: 0
+  EnableLoadedBricks: 0
+  EnableAllocatedBricks: 1
+  EnableBrickMapBorders: 1
+  DetachCamera: 1
+  EnableDensitySampler: 0
+  DensitySamplerPosition: {x: 16, y: 16, z: 16}
 --- !u!114 &337805764
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -568,7 +571,7 @@ Transform:
   m_GameObject: {fileID: 754368153}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -8, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -592,51 +595,6 @@ MonoBehaviour:
   m_Dimention1: 12
   m_Dimention2: 1
   m_Dimention3: 4
---- !u!1 &1080900451
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1080900452}
-  - component: {fileID: 1080900453}
-  m_Layer: 0
-  m_Name: Terrain Debugger
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!4 &1080900452
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1080900451}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 32, y: 20.66, z: 22.72}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1080900453
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1080900451}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 484ed611fbf03e243aa50bec4da96788, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.TerrainDebugger
-  m_Terrain: {fileID: 337805763}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -644,5 +602,4 @@ SceneRoots:
   - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 337805762}
-  - {fileID: 1080900452}
   - {fileID: 231485491}

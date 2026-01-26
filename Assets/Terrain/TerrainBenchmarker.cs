@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.DevTools
+namespace LevelGeneration.Terrain
 {
     public class TerrainBenchmarker : MonoBehaviour
     {
