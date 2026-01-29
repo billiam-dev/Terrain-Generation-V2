@@ -8,8 +8,8 @@ namespace LevelGeneration.Terrain
 {
     public partial class ProceduralTerrain : MonoBehaviour
     {
-        [Range(1, k_NumBrickMapLevels)]
-        public int BrickmapDebugLevel = 1;
+        [Range(0, k_NumBrickMapLevels - 1)]
+        public int BrickmapDebugLevel;
 
         public bool EnableShapeVolumes;
         public bool EnableLoadedBricks;
@@ -22,10 +22,10 @@ namespace LevelGeneration.Terrain
         {
             Gizmos.matrix = Matrix4x4.identity;
 
-            if (EnableShapeVolumes) m_Terrain.DrawShapeVolumeIndices(BrickmapDebugLevel - 1, m_Scene);
-            if (EnableLoadedBricks) m_Terrain.DrawLoadedBricks();
-            if (EnableAllocatedBricks) m_Terrain.DrawAllocatedBricks();
-            if (EnableBrickMapBorders) m_Terrain.DrawMapLevelBounds(GetObserverPosition());
+            if (EnableShapeVolumes) m_DensityCache.DrawShapeVolumeIndices(BrickmapDebugLevel, m_Scene);
+            if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks(BrickmapDebugLevel);
+            if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks(BrickmapDebugLevel);
+            if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelBounds(BrickmapDebugLevel, m_ObserverPosition);
         }
 
         static Color RandomColor(int3 position)
@@ -50,11 +50,11 @@ namespace LevelGeneration.Terrain
                 1.0f);
         }
 
-        partial class SDFTerrain
+        partial class DensityCache
         {
-            partial class DensityBrickMap
+            partial class SparseBrickMap
             {
-                internal void DrawShapeVolumeIndices(Scene scene)
+                internal void DrawShapeVolumeIndices(SDFScene scene)
                 {
                     HashSet<int3> bricksInShapeVolumes = new();
 
@@ -138,30 +138,27 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            internal void DrawShapeVolumeIndices(int levelIndex, Scene scene)
+            internal void DrawShapeVolumeIndices(int levelIndex, SDFScene scene)
             {
                 brickMapLevels[levelIndex].DrawShapeVolumeIndices(scene);
             }
 
-            internal void DrawMapLevelBounds(float3 observerPosition)
+            internal void DrawMapLevelBounds(int levelIndex, float3 observerPosition)
             {
                 Color color = new(1.0f, 1.0f, 1.0f, 0.5f);
-                foreach (DensityBrickMap brickMap in brickMapLevels)
-                    brickMap.DrawBounds(observerPosition, color);
+                brickMapLevels[levelIndex].DrawBounds(observerPosition, color);
             }
 
-            internal void DrawLoadedBricks()
+            internal void DrawLoadedBricks(int levelIndex)
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
-                foreach (DensityBrickMap brickMap in brickMapLevels)
-                    brickMap.DrawLoadedBricks(sceneCamera);
+                brickMapLevels[levelIndex].DrawLoadedBricks(sceneCamera);
             }
 
-            internal void DrawAllocatedBricks()
+            internal void DrawAllocatedBricks(int levelIndex)
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
-                foreach (DensityBrickMap brickMap in brickMapLevels)
-                    brickMap.DrawAllocatedBricks(sceneCamera);
+                brickMapLevels[levelIndex].DrawAllocatedBricks(sceneCamera);
             }
 
             internal void Debug_GetBrickVolumeFromAABB(int level, float3 boundsPosition, float3 boundsVolume, out int3 initialIndex, out int3 volume)

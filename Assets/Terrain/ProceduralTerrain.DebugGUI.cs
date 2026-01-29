@@ -35,11 +35,10 @@ namespace LevelGeneration.Terrain
             public int numBricksAllocated;
             public int recomputedBricks;
             public double recomputationTime;
-
-            readonly double[] densityJobTimes;
-            int densityJobTimeIdx;
-
             public double mapUpdateTime;
+
+            public readonly MeanTime densityJobTimes;
+            public readonly MeanTime meshingJobTimes;
 
             const float k_SingleLineHeight = 20.0f;
 
@@ -54,35 +53,10 @@ namespace LevelGeneration.Terrain
                 numBricksAllocated = 0;
                 recomputedBricks = 0;
                 recomputationTime = 0.0;
-
-                densityJobTimes = new double[10];
-                densityJobTimeIdx = 0;
-
                 mapUpdateTime = 0.0;
-            }
 
-            internal void AddJobTime(double time)
-            {
-                densityJobTimes[densityJobTimeIdx] = time;
-
-                densityJobTimeIdx++;
-                if (densityJobTimeIdx >= densityJobTimes.Length)
-                    densityJobTimeIdx = 0;
-            }
-
-            readonly double AvarageDensityJobTime()
-            {
-                double t = 0;
-                int count = 0;
-
-                for (int i = 0; i < densityJobTimes.Length; i++)
-                {
-                    t += densityJobTimes[i];
-                    if (t > 0.0)
-                        count++;
-                }
-
-                return t / count;
+                densityJobTimes = new MeanTime(10);
+                meshingJobTimes = new MeanTime(10);
             }
 
             internal readonly void DisplayGUI()
@@ -110,9 +84,12 @@ namespace LevelGeneration.Terrain
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Total recomputation time: {Stopwatch.ToMilliseconds(recomputationTime)}ms");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Avarage density evaluation time: {Stopwatch.ToMilliseconds(AvarageDensityJobTime())}ms");
+                GUI.Label(rect, $"Avarage density evaluation time: {Stopwatch.ToMilliseconds(densityJobTimes.Avarage())}ms");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Map update time: {Stopwatch.ToMilliseconds(mapUpdateTime)}ms");
+                rect.y += k_SingleLineHeight;
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Avarage meshing time: {Stopwatch.ToMilliseconds(meshingJobTimes.Avarage())}ms");
             }
         }
     }

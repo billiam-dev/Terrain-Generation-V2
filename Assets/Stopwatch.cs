@@ -17,17 +17,9 @@ using UnityEngine;
 /// </summary>
 public class Stopwatch
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Start(ref double timer)
-    {
-        timer = Time.realtimeSinceStartupAsDouble;
-    }
+    public static void Start(ref double timer) => timer = Time.realtimeSinceStartupAsDouble;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void End(ref double timer)
-    {
-        timer = Time.realtimeSinceStartupAsDouble - timer;
-    }
+    public static void End(ref double timer) => timer = Time.realtimeSinceStartupAsDouble - timer;
 
     public static double ToMilliseconds(double time)
     {
@@ -38,5 +30,41 @@ public class Stopwatch
         timeMiliseconds /= 1000.0;
 
         return timeMiliseconds;
+    }
+}
+
+public class MeanTime
+{
+    readonly double[] times;
+    int i;
+
+    public MeanTime(int arraySize)
+    {
+        times = new double[arraySize];
+        i = 0;
+    }
+
+    public void AddTime(double time)
+    {
+        times[i] = time;
+
+        i++;
+        if (i >= times.Length)
+            i = 0;
+    }
+
+    public double Avarage()
+    {
+        double t = 0;
+        int count = 0;
+
+        for (int i = 0; i < times.Length; i++)
+        {
+            t += times[i];
+            if (t > 0.0)
+                count++;
+        }
+
+        return t / count;
     }
 }

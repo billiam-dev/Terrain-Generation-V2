@@ -17,16 +17,12 @@ namespace LevelGeneration.Terrain.Rendering
     public struct TransvoxelMesherJob : IJob
     {
         // Input terrain data
-        [ReadOnly] public int3 initialChunkIndex;     // Index of the initial chunk to be meshed.
-        [ReadOnly] public int chunkVolume;            // Volume of chunks to be meshed, expands uniformely in the positive axis from the intial chunk.
-        [ReadOnly] public int3 terrainSize;           // Total chunk dimentions of the terrain.
-        [ReadOnly] public DensitySampler chunks;      // Terrain density data.
-
-        [ReadOnly] public int chunkResolution;        // Number of cells per axis in a density chunk.
-        [ReadOnly] public float voxelScale;           // World scale of a single cell, determines the scale of the entire terrain.
-
-        [ReadOnly] public int stepSize;               // Determines the volume of density cells contained in a single mesh cell, for controlling Level of Detail (LOD).
-        [ReadOnly] public float padding;              // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
+        [ReadOnly] public int clipmapLevel;         // The chunk's clipmap level (idx).
+        [ReadOnly] public int3 chunkIndex;          // Index into the density brick map at this clipmap level.
+        [ReadOnly] public DensitySampler chunks;    // Terrain density data.
+        [ReadOnly] public int chunkSize;            // Number of cells per axis in a density chunk.
+        [ReadOnly] public float cellScale;          // World scale of a single cell, determines the scale of the entire terrain.
+        [ReadOnly] public float padding;            // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
 
         // Output mesh data
         [NativeDisableParallelForRestriction]
@@ -44,26 +40,28 @@ namespace LevelGeneration.Terrain.Rendering
 
         public void Execute()
         {
-            bool makeTransitionCells = stepSize != 1;
+            bool makeTransitionCells = clipmapLevel > 0;
 
             // March all cells to create default meshes.
-            for (int x = 0; x < chunkResolution; x++)
-                for (int y = 0; y < chunkResolution; y++)
-                    for (int z = 0; z < chunkResolution; z++)
+            for (int x = 0; x < chunkSize; x++)
+                for (int y = 0; y < chunkSize; y++)
+                    for (int z = 0; z < chunkSize; z++)
                         MarchRegularCell(new int3(x, y, z), makeTransitionCells);
 
             // March outer cells to create transition meshes.
+            /*
             if (makeTransitionCells)
             {
                 for (int i = 0; i < 6; i++)
                 {
                     meshStartIndices[i] = new int2(vertices.Length, indices.Length);
                     
-                    for (int x = 0; x < chunkResolution; x++)
-                        for (int y = 0; y < chunkResolution; y++)
+                    for (int x = 0; x < chunkSize; x++)
+                        for (int y = 0; y < chunkSize; y++)
                             MarchTransitionCell(new int2(x, y), i);
                 }
             }
+            */
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -72,7 +70,7 @@ namespace LevelGeneration.Terrain.Rendering
             // Fetch the 8 corner indices of the current cube.
             CubeCorners<float> density = new();
             for (int i = 0; i < 8; i++)
-                density[i] = SampleDensity((index + TransvoxelTables.CornerOffsets[i]) * stepSize);
+                density[i] = SampleDensity(index + TransvoxelTables.CornerOffsets[i]);
 
             // Find the unique 'cube configuration' for this cell, using the density values at each corner point.
             // The cube configuration is used as a lookup in the trinangulation table, which tells the algorithm which vertices to connect for this specific set of density values.
@@ -146,13 +144,13 @@ namespace LevelGeneration.Terrain.Rendering
                     }
                     else
                     {
-                        cellIndices[i] = vertexIndices[FlattenIndex(index + cellOffset, chunkResolution)][vertexEdgeIndex];
+                        cellIndices[i] = vertexIndices[FlattenIndex(index + cellOffset, chunkSize)][vertexEdgeIndex];
                     }
                 }
             }
 
             // Store the cell for reuse.
-            vertexIndices[FlattenIndex(index, chunkResolution)] = reuseCell;
+            vertexIndices[FlattenIndex(index, chunkSize)] = reuseCell;
 
             // Form triangles from the indices above.
             for (int i = 0; i < triangleCount; i++)
@@ -169,18 +167,18 @@ namespace LevelGeneration.Terrain.Rendering
             // Meshing order: (x, -x, y, -y, z, -z)
             int3 index = chunkFaceIndex switch
             {
-                0 => new(chunkResolution - 1, cellIndex.x, cellIndex.y),
+                0 => new(chunkSize - 1, cellIndex.x, cellIndex.y),
                 1 => new(0, cellIndex.x, cellIndex.y),
-                2 => new(cellIndex.x, chunkResolution - 1, cellIndex.y),
+                2 => new(cellIndex.x, chunkSize - 1, cellIndex.y),
                 3 => new(cellIndex.x, 0, cellIndex.y),
-                4 => new(cellIndex.x, cellIndex.y, chunkResolution - 1),
+                4 => new(cellIndex.x, cellIndex.y, chunkSize - 1),
                 5 => new(cellIndex.x, cellIndex.y, 0),
                 _ => new(0, 0, 0)
             };
 
             TransitionCorners<float> density = new();
             for (int i = 0; i < 9; i++)
-                density[i] = SampleDensity((index * stepSize) + (TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][i] * stepSize / 2));
+                density[i] = SampleDensity(index + TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][i]);
 
             float3 packedDensity1 = new(density[0], density[1], density[2]);
             float3 packedDensity2 = new(density[5], density[8], density[7]);
@@ -265,8 +263,8 @@ namespace LevelGeneration.Terrain.Rendering
             int3 i1 = index + TransvoxelTables.CornerOffsets[v1];
 
             // Compute global edge indices.
-            int3 global_i0 = i0 * stepSize;
-            int3 global_i1 = i1 * stepSize;
+            int3 global_i0 = i0;
+            int3 global_i1 = i1;
 
             int edgeMask = 0;
             if (padForTransitions)
@@ -283,12 +281,12 @@ namespace LevelGeneration.Terrain.Rendering
             float3 position = (t * pos0) + ((1 - t) * pos1);
 
             // Compute secondary position.
-            float3 delta = GetTransitionDelta(edgeMask, position / stepSize) * padding;
+            float3 delta = GetTransitionDelta(edgeMask, position) * padding;
             float3 sPosition = ReprojectPointWithNormal(position, delta, normal);
 
             // Magnify by the voxel scale.
-            position *= voxelScale;
-            sPosition *= voxelScale;
+            position *= cellScale;
+            sPosition *= cellScale;
 
             // Add vertex and return its index.
             ushort vertexIndex = (ushort)vertices.Length;
@@ -300,12 +298,12 @@ namespace LevelGeneration.Terrain.Rendering
         ushort AddTransitionVertex(int3 index, byte v0, byte v1, float t, int chunkFaceIndex)
         {
             // Compute global edge indices.
-            int3 global_i0 = (index * stepSize) + (TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[v0]] * (stepSize / 2)); // First corner index (3d terrain)
-            int3 global_i1 = (index * stepSize) + (TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[v1]] * (stepSize / 2)); // Second corner index (3d terrain)
+            int3 global_i0 = index + (TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[v0]]); // First corner index (3d terrain)
+            int3 global_i1 = index + (TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[v1]]); // Second corner index (3d terrain)
 
             // Compute edge indices.
-            int3 i0 = global_i0 / stepSize;
-            int3 i1 = global_i1 / stepSize;
+            int3 i0 = global_i0;
+            int3 i1 = global_i1;
 
             int edgeMask = 0;
             if (v0 > 8 && v1 > 8)
@@ -322,12 +320,12 @@ namespace LevelGeneration.Terrain.Rendering
             float3 position = (t * pos0) + ((1 - t) * pos1);
 
             // Compute secondary position.
-            float3 delta = GetTransitionDelta(edgeMask, position / stepSize) * padding;
+            float3 delta = GetTransitionDelta(edgeMask, position) * padding;
             float3 sPosition = ReprojectPointWithNormal(position, delta, normal);
 
             // Magnify by the voxel scale.
-            position *= voxelScale;
-            sPosition *= voxelScale;
+            position *= cellScale;
+            sPosition *= cellScale;
 
             // Add vertex and return its index.
             ushort vertexIndex = (ushort)vertices.Length;
@@ -340,11 +338,11 @@ namespace LevelGeneration.Terrain.Rendering
         readonly int MakeEdgeMask(float3 i0, float3 i1)
         {
             // Order: (x, -x, y, -y, z, -z)
-            return ((i0.x == chunkResolution || i1.x == chunkResolution) ? 1 : 0)
+            return ((i0.x == chunkSize || i1.x == chunkSize) ? 1 : 0)
                  | ((i0.x == 0 || i1.x == 0) ? 2 : 0)
-                 | ((i0.y == chunkResolution || i1.y == chunkResolution) ? 4 : 0)
+                 | ((i0.y == chunkSize || i1.y == chunkSize) ? 4 : 0)
                  | ((i0.y == 0 || i1.y == 0) ? 8 : 0)
-                 | ((i0.z == chunkResolution || i1.z == chunkResolution) ? 16 : 0)
+                 | ((i0.z == chunkSize || i1.z == chunkSize) ? 16 : 0)
                  | ((i0.z == 0 || i1.z == 0) ? 32 : 0);
         }
 
@@ -356,18 +354,18 @@ namespace LevelGeneration.Terrain.Rendering
             {
                 float3 delta = 0;
 
-                if ((edgeMask & 1) == 1 && position.x > (chunkResolution - 1))
-                    delta.x = (chunkResolution - 1) - position.x;
+                if ((edgeMask & 1) == 1 && position.x > (chunkSize - 1))
+                    delta.x = (chunkSize - 1) - position.x;
                 else if ((edgeMask & 2) == 2 && position.x < 1)
                     delta.x = 1 - position.x;
 
-                if ((edgeMask & 4) == 4 && position.y > (chunkResolution - 1))
-                    delta.y = (chunkResolution - 1) - position.y;
+                if ((edgeMask & 4) == 4 && position.y > (chunkSize - 1))
+                    delta.y = (chunkSize - 1) - position.y;
                 else if ((edgeMask & 8) == 8 && position.y < 1)
                     delta.y = 1 - position.y;
 
-                if ((edgeMask & 16) == 16 && position.z > (chunkResolution - 1))
-                    delta.z = (chunkResolution - 1) - position.z;
+                if ((edgeMask & 16) == 16 && position.z > (chunkSize - 1))
+                    delta.z = (chunkSize - 1) - position.z;
                 else if ((edgeMask & 32) == 32 && position.z < 1)
                     delta.z = 1 - position.z;
 
@@ -444,11 +442,8 @@ namespace LevelGeneration.Terrain.Rendering
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly float SampleDensity(int3 localCellIndex)
         {
-            // TODO: trying to read values that are out of bounds.
-            // Terrain must ensure 1 chunk of padding at the edge of the view distance to prevent this error!
-
-            int3 globalCellIndex = (initialChunkIndex * chunkResolution) + localCellIndex;
-            return chunks.Sample(globalCellIndex, chunkResolution);
+            int3 globalCellIndex = (chunkIndex * chunkSize) + localCellIndex;
+            return chunks.Sample(globalCellIndex, chunkSize);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

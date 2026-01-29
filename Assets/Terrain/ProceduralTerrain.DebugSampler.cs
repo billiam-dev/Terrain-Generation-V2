@@ -12,12 +12,12 @@ namespace LevelGeneration.Terrain
 
         void DrawSamplerGizmo()
         {
-            if (EnableDensitySampler) m_Terrain.DrawDensitySampler(BrickmapDebugLevel - 1, DensitySamplerPosition);
+            if (EnableDensitySampler) m_DensityCache.DrawDensitySampler(BrickmapDebugLevel, DensitySamplerPosition);
         }
 
-        partial class SDFTerrain
+        partial class DensityCache
         {
-            partial class DensityBrickMap
+            partial class SparseBrickMap
             {
                 internal void DrawDensitySampler(Vector3 position)
                 {
