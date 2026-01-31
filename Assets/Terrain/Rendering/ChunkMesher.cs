@@ -52,7 +52,7 @@ namespace LevelGeneration.Terrain.Rendering
             {
                 clipmapLevel = clipmapLevel,
                 chunkIndex = chunkIndex,
-                chunks = renderingData.GetDensitySampler(clipmapLevel),
+                chunks = renderingData.brickmapLevels[clipmapLevel].DensitySampler,
                 chunkSize = 16,
                 cellScale = 1,
                 padding = transitionCellPadding,

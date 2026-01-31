@@ -38,6 +38,12 @@ public class MeanTime
     readonly double[] times;
     int i;
 
+    public MeanTime()
+    {
+        times = new double[10];
+        i = 0;
+    }
+
     public MeanTime(int arraySize)
     {
         times = new double[arraySize];

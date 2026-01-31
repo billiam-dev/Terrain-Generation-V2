@@ -9,79 +9,57 @@ namespace LevelGeneration.Terrain.Rendering
 {
     public class TerrainRenderingData
     {
-        class BrickMapRenderingData
-        {
-            readonly HashSet<int3> modifiedBricks;
-            readonly DensitySampler densitySampler;
-
-            internal DensitySampler DensitySampler => densitySampler;
-
-            internal int3[] AllocatedBricks => densitySampler.GetIndices();
-
-            internal BrickMapRenderingData(int size)
-            {
-                modifiedBricks = new();
-                densitySampler.Allocate(size);
-            }
-
-            ~BrickMapRenderingData()
-            {
-                densitySampler.Dispose();
-            }
-
-            internal void RegisterBrick(int3 index, IntPtr densityPointer)
-            {
-                densitySampler.AddBrick(index, densityPointer);
-            }
-
-            internal void DeregisterBrick(int3 index)
-            {
-                modifiedBricks.Remove(index);
-                densitySampler.RemoveBrick(index);
-            }
-
-            internal void FlagBrickPendingRemesh(int3 index)
-            {
-                if (!modifiedBricks.Contains(index))
-                    modifiedBricks.Add(index);
-            }
-
-            internal bool IsBrickPendingRemesh(int3 index)
-            {
-                return modifiedBricks.Contains(index);
-            }
-
-            internal void RemovePendingRemeshFlag(int3 index)
-            {
-                if (modifiedBricks.Contains(index))
-                    modifiedBricks.Remove(index);
-            }
-        }
-
-        readonly BrickMapRenderingData[] brickmapRenderingDatas;
+        public BrickMapRenderingData[] brickmapLevels;
         public Camera Camera;
+    }
 
-        public TerrainRenderingData(int numLevels, int brickmapLevelSize)
+    public class BrickMapRenderingData
+    {
+        readonly HashSet<int3> modifiedBricks;
+        readonly DensitySampler densitySampler;
+
+        internal DensitySampler DensitySampler => densitySampler;
+
+        internal int3[] AllocatedBricks => densitySampler.GetIndices();
+
+        internal BrickMapRenderingData(int size)
         {
-            brickmapRenderingDatas = new BrickMapRenderingData[numLevels];
-
-            for (int i = 0; i < numLevels; i++)
-                brickmapRenderingDatas[i] = new(brickmapLevelSize);
+            modifiedBricks = new();
+            densitySampler.Allocate(size);
         }
 
-        public void RegisterBrick(int brickmapLevel, int3 index, IntPtr densityPointer) => brickmapRenderingDatas[brickmapLevel].RegisterBrick(index, densityPointer);
+        ~BrickMapRenderingData()
+        {
+            densitySampler.Dispose();
+        }
 
-        public void DeregisterBrick(int brickmapLevel, int3 index) => brickmapRenderingDatas[brickmapLevel].DeregisterBrick(index);
+        internal void RegisterBrick(int3 index, IntPtr densityPointer)
+        {
+            densitySampler.AddBrick(index, densityPointer);
+        }
 
-        public void FlagBrickPendingRemesh(int brickmapLevel, int3 index) => brickmapRenderingDatas[brickmapLevel].FlagBrickPendingRemesh(index);
+        internal void DeregisterBrick(int3 index)
+        {
+            modifiedBricks.Remove(index);
+            densitySampler.RemoveBrick(index);
+        }
 
-        public bool IsBrickPendingRemesh(int brickmapLevel, int3 index) => brickmapRenderingDatas[brickmapLevel].IsBrickPendingRemesh(index);
+        internal void FlagBrickPendingRemesh(int3 index)
+        {
+            if (!modifiedBricks.Contains(index))
+                modifiedBricks.Add(index);
+        }
 
-        public void RemovePendingRemeshFlag(int brickmapLevel, int3 index) => brickmapRenderingDatas[brickmapLevel].RemovePendingRemeshFlag(index);
+        internal bool IsBrickPendingRemesh(int3 index)
+        {
+            return modifiedBricks.Contains(index);
+        }
 
-        public int3[] GetAllocatedBricks(int brickmapLevel) => brickmapRenderingDatas[brickmapLevel].AllocatedBricks;
-
-        public DensitySampler GetDensitySampler(int brickmapLevel) => brickmapRenderingDatas[brickmapLevel].DensitySampler;
+        internal void RemovePendingRemeshFlag(int3 index)
+        {
+            if (modifiedBricks.Contains(index))
+                modifiedBricks.Remove(index);
+        }
     }
 
     /// <summary>

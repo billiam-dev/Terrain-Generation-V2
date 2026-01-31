@@ -36,6 +36,7 @@ namespace LevelGeneration.Terrain
             public int recomputedBricks;
             public double recomputationTime;
             public double mapUpdateTime;
+            public int chunkRendererdThisFrame;
 
             public readonly MeanTime densityJobTimes;
             public readonly MeanTime meshingJobTimes;
@@ -54,9 +55,10 @@ namespace LevelGeneration.Terrain
                 recomputedBricks = 0;
                 recomputationTime = 0.0;
                 mapUpdateTime = 0.0;
+                chunkRendererdThisFrame = 0;
 
-                densityJobTimes = new MeanTime(10);
-                meshingJobTimes = new MeanTime(10);
+                densityJobTimes = new MeanTime();
+                meshingJobTimes = new MeanTime();
             }
 
             internal readonly void DisplayGUI()
@@ -90,6 +92,8 @@ namespace LevelGeneration.Terrain
                 rect.y += k_SingleLineHeight;
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Avarage meshing time: {Stopwatch.ToMilliseconds(meshingJobTimes.Avarage())}ms");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Chunks this Frame: {chunkRendererdThisFrame}");
             }
         }
     }

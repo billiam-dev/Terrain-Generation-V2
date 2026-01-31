@@ -20,13 +20,18 @@ namespace LevelGeneration.Terrain
 
         void InitializeRendering()
         {
-            m_RenderingData = new(k_NumBrickMapLevels, k_BrickmapLevelSize);
+            m_RenderingData = new()
+            {
+                brickmapLevels = m_DensityCache.GetRenderingData()
+            };
             
             m_ChunkMesher = new ChunkMesher();
 
             m_Clipmaps = new ClipmapLevel[k_NumBrickMapLevels];
             for (int i = 0; i < k_NumBrickMapLevels; i++)
                 m_Clipmaps[i] = new(k_BrickmapLevelSize, i);
+
+            m_MaterialProperties = new();
         }
 
         void CleanupRendering()
@@ -38,6 +43,8 @@ namespace LevelGeneration.Terrain
 
         void DrawClipmapLevels()
         {
+            m_DebugInfo.chunkRendererdThisFrame = 0;
+
             foreach (ClipmapLevel clipmap in m_Clipmaps)
                 clipmap.Draw(Material, m_MaterialProperties, m_RenderingData, m_ChunkMesher, ref m_DebugInfo);
         }
@@ -46,14 +53,14 @@ namespace LevelGeneration.Terrain
         {
             class Chunk
             {
-                int3 chunkIndex;
-                int level;
+                readonly int3 chunkIndex;
+                readonly int level;
 
-                float3 position;
-                float3 size;
+                readonly float3 position;
+                readonly float3 size;
                 
-                Mesh mesh;
-                Mesh[] transitionMeshes;
+                readonly Mesh mesh;
+                readonly Mesh[] transitionMeshes;
 
                 bool meshUpToDate;
 
@@ -62,14 +69,14 @@ namespace LevelGeneration.Terrain
                     this.chunkIndex = chunkIndex;
                     this.level = level;
 
-                    float chunkSize = k_BrickSize; // TODO: pass in k_BrickSize as chunkSize
+                    float chunkSize = k_BrickSize * k_WorldScale; // TODO: pass in k_BrickSize as chunkSize
 
                     position = (float3)chunkIndex * chunkSize;
                     size = chunkSize;
                     
                     mesh = new Mesh()
                     {
-                        bounds = new Bounds(Vector3.zero, size)
+                        bounds = new Bounds(size * 0.5f, size)
                     };
 
                     meshUpToDate = false;
@@ -82,21 +89,23 @@ namespace LevelGeneration.Terrain
                     if (!InViewFrustum(camera))
                         return;
 
-                    if (renderingData.IsBrickPendingRemesh(level, chunkIndex))
+                    BrickMapRenderingData brickMapRendering = renderingData.brickmapLevels[level];
+
+                    if (brickMapRendering.IsBrickPendingRemesh(chunkIndex))
                     {
-                        renderingData.RemovePendingRemeshFlag(level, chunkIndex);
+                        brickMapRendering.RemovePendingRemeshFlag(chunkIndex);
                         meshUpToDate = false;
                     }
 
                     if (!meshUpToDate)
                     {
-                        // Make mesh
                         MeshingResult result = mesher.DoRemesh(mesh, transitionMeshes, renderingData, chunkIndex, level, k_TransitionCellPadding);
                         debugInfo.meshingJobTimes.AddTime(result.ExecutionTime);
                         meshUpToDate = true;
+
+                        debugInfo.chunkRendererdThisFrame++;
                     }
 
-                    // Draw mesh
                     if (mesh.vertexCount > 2)
                         Graphics.DrawMesh(mesh, Matrix4x4.TRS(position, Quaternion.identity, Vector3.one), material, 0, camera, 0, mpb);
                 }
@@ -104,7 +113,7 @@ namespace LevelGeneration.Terrain
                 bool InViewFrustum(Camera camera)
                 {
                     Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
-                    return GeometryUtility.TestPlanesAABB(frustumPlanes, new Bounds(position, size));
+                    return GeometryUtility.TestPlanesAABB(frustumPlanes, new Bounds(position + (size * 0.5f), size));
                 }
             }
 
@@ -122,13 +131,15 @@ namespace LevelGeneration.Terrain
 
             public void Draw(Material material, MaterialPropertyBlock mpb, TerrainRenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
             {
-                int3[] allocatedBrickIndices = renderingData.GetAllocatedBricks(level);
+                int3[] allocatedBrickIndices = renderingData.brickmapLevels[level].AllocatedBricks;
 
                 // Note this method of dictionary management is crap because we are already doing this in brickmap levels.
                 // It may be smarter to simply send a list of chunks that were allocated and de-allocated per-frame.
 
                 // Remove chunks that are no longer allocated.
-                var existingChunks = chunks.Keys;
+                int3[] existingChunks = new int3[chunks.Keys.Count];
+                chunks.Keys.CopyTo(existingChunks, 0);
+
                 foreach (int3 chunkIndex in existingChunks)
                 {
                     if (!allocatedBrickIndices.Contains(chunkIndex))
