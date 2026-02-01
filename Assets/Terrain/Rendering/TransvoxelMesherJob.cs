@@ -12,8 +12,7 @@ namespace LevelGeneration.Terrain.Rendering
     // Transvoxel Tables: https://github.com/EricLengyel/Transvoxel/blob/main/Transvoxel.cpp
     // Implementation reference: https://github.com/bbQsauce5/transvoxel-unity/blob/main/Runtime/Mesher/TransvoxelTables.cs, https://github.com/Fobri/Terraxel-Unity/tree/main
 
-    //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    [BurstCompile(FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true)]
+    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct TransvoxelMesherJob : IJob
     {
         // Input terrain data
@@ -47,6 +46,8 @@ namespace LevelGeneration.Terrain.Rendering
                 for (int y = 0; y < chunkSize; y++)
                     for (int z = 0; z < chunkSize; z++)
                         MarchRegularCell(new int3(x, y, z), makeTransitionCells);
+
+            // TODO: Re-add transvoxel meshing!
 
             // March outer cells to create transition meshes.
             /*

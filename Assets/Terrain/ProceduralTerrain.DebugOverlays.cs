@@ -54,7 +54,7 @@ namespace LevelGeneration.Terrain
         {
             partial class SparseBrickMap
             {
-                internal void DrawShapeVolumeIndices(SDFScene scene)
+                public void DrawShapeVolumeIndices(SDFScene scene)
                 {
                     HashSet<int3> bricksInShapeVolumes = new();
 
@@ -72,7 +72,7 @@ namespace LevelGeneration.Terrain
                     Gizmos.color = new Color(1.0f, 0.1f, 0.0f, 0.1f);
                     foreach (int3 brickIndex in bricksInShapeVolumes)
                     {
-                        float3 worldBrickSize = brickSize * sizeMultiplier * worldScale;
+                        float3 worldBrickSize = brickSize * brickScale * worldScale;
 
                         float3 brickCorner = worldBrickSize * brickIndex;
                         float3 bricksCentre = brickCorner + (worldBrickSize / 2.0f);
@@ -81,11 +81,11 @@ namespace LevelGeneration.Terrain
                     }
                 }
 
-                internal void DrawBounds(float3 observerPosition, Color color)
+                public void DrawBounds(float3 observerPosition, Color color)
                 {
                     int3 originIndex = GetOriginIndex(observerPosition);
 
-                    float3 worldBrickSize = brickSize * sizeMultiplier * worldScale;
+                    float3 worldBrickSize = brickSize * brickScale * worldScale;
 
                     float3 brickmapLevelCentre = worldBrickSize * originIndex;
                     float3 brickMapLevelSize = mapSize * worldBrickSize;
@@ -94,16 +94,16 @@ namespace LevelGeneration.Terrain
                     Gizmos.DrawWireCube(brickmapLevelCentre, brickMapLevelSize);
                 }
 
-                internal void DrawLoadedBricks(Camera camera)
+                public void DrawLoadedBricks(Camera camera)
                 {
                     int3[] loadedBricks = new int3[bricks.Count];
                     bricks.Keys.CopyTo(loadedBricks, 0);
 
                     foreach (int3 brickIndex in loadedBricks)
-                        DrawBrick(brickIndex, camera);
+                        DrawBrick(brickIndex, camera, 0.05f);
                 }
 
-                internal void DrawAllocatedBricks(Camera camera)
+                public void DrawAllocatedBricks(Camera camera)
                 {
                     int3[] allocatedBricks = new int3[numBricksAllocated];
                     int i = 0;
@@ -121,9 +121,9 @@ namespace LevelGeneration.Terrain
                         DrawBrick(brickIndex, camera);
                 }
 
-                void DrawBrick(int3 brickIndex, Camera camera)
+                void DrawBrick(int3 brickIndex, Camera camera, float alphaMultiplier = 1.0f)
                 {
-                    float3 worldBrickSize = brickSize * sizeMultiplier * worldScale;
+                    float3 worldBrickSize = brickSize * brickScale * worldScale;
 
                     float3 brickCorner = worldBrickSize * brickIndex;
                     float3 brickCentre = brickCorner + (worldBrickSize / 2.0f);
@@ -131,37 +131,40 @@ namespace LevelGeneration.Terrain
                     float viewingDistance = math.length((float3)camera.transform.position - brickCentre);
 
                     Color color = RandomColor(brickIndex);
-                    color.a = math.clamp(1.0f - (viewingDistance / 256.0f), 0.05f, 1.0f);
+                    color.a = math.clamp(1.0f - (viewingDistance / 256.0f), 0.05f, 1.0f) * alphaMultiplier;
 
                     Gizmos.color = color;
                     Gizmos.DrawWireCube(brickCentre, worldBrickSize);
                 }
             }
 
-            internal void DrawShapeVolumeIndices(int levelIndex, SDFScene scene)
+            public void DrawShapeVolumeIndices(int levelIndex, SDFScene scene)
             {
                 brickMapLevels[levelIndex].DrawShapeVolumeIndices(scene);
             }
 
-            internal void DrawMapLevelBounds(int levelIndex, float3 observerPosition)
+            public void DrawMapLevelBounds(int levelIndex, float3 observerPosition)
             {
                 Color color = new(1.0f, 1.0f, 1.0f, 0.5f);
-                brickMapLevels[levelIndex].DrawBounds(observerPosition, color);
+                //brickMapLevels[levelIndex].DrawBounds(observerPosition, color);
+
+                foreach (SparseBrickMap brickmap in brickMapLevels)
+                    brickmap.DrawBounds(observerPosition, color);
             }
 
-            internal void DrawLoadedBricks(int levelIndex)
+            public void DrawLoadedBricks(int levelIndex)
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
                 brickMapLevels[levelIndex].DrawLoadedBricks(sceneCamera);
             }
 
-            internal void DrawAllocatedBricks(int levelIndex)
+            public void DrawAllocatedBricks(int levelIndex)
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
                 brickMapLevels[levelIndex].DrawAllocatedBricks(sceneCamera);
             }
 
-            internal void Debug_GetBrickVolumeFromAABB(int level, float3 boundsPosition, float3 boundsVolume, out int3 initialIndex, out int3 volume)
+            public void Debug_GetBrickVolumeFromAABB(int level, float3 boundsPosition, float3 boundsVolume, out int3 initialIndex, out int3 volume)
             {
                 brickMapLevels[level].GetBrickVolumeFromAABB(boundsPosition, boundsVolume, out initialIndex, out volume);
             }

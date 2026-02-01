@@ -40,21 +40,19 @@ namespace LevelGeneration.Terrain.Rendering
             m_MeshStartIndices.Dispose();
         }
 
-        public MeshingResult DoRemesh(Mesh mesh, Mesh[] transitionMeshes, TerrainRenderingData renderingData, int3 chunkIndex, int clipmapLevel, float transitionCellPadding)
+        public MeshingResult DoRemesh(Mesh mesh, Mesh[] transitionMeshes, TerrainRenderingData renderingData, int3 chunkIndex, int chunkSize, int clipmapLevel, float transitionCellPadding)
         {
-            int totalPoints = 4096; // TODO
-
             m_Vertices.Clear();
             m_Indices.Clear();
-            m_VertexIndices = new(totalPoints, Allocator.TempJob);
+            m_VertexIndices = new(chunkSize * chunkSize * chunkSize, Allocator.TempJob);
 
             TransvoxelMesherJob mesherJob = new()
             {
                 clipmapLevel = clipmapLevel,
                 chunkIndex = chunkIndex,
                 chunks = renderingData.brickmapLevels[clipmapLevel].DensitySampler,
-                chunkSize = 16,
-                cellScale = 1,
+                chunkSize = chunkSize,
+                cellScale = 1, // TODO
                 padding = transitionCellPadding,
                 vertices = m_Vertices,
                 indices = m_Indices,

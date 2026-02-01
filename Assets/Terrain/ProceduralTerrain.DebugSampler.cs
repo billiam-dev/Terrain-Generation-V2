@@ -19,7 +19,7 @@ namespace LevelGeneration.Terrain
         {
             partial class SparseBrickMap
             {
-                internal void DrawDensitySampler(Vector3 position)
+                public void DrawDensitySampler(Vector3 position)
                 {
                     ComputeIndices(position, out int3 globalCellIndex, out int3 brickIndex, out int3 localCellIndex);
                     float density = SampleDensityCache(brickIndex, localCellIndex);
@@ -38,7 +38,7 @@ namespace LevelGeneration.Terrain
                     Handles.Label(position + offset, infoStr);
 
                     // Draw cell.
-                    float worldCellSize = sizeMultiplier * worldScale;
+                    float worldCellSize = brickScale * worldScale;
                     float3 cellCorner = (float3)globalCellIndex * worldCellSize;
                     float3 cellCentre = cellCorner + (worldCellSize / 2.0f);
 
@@ -72,7 +72,7 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            internal void DrawDensitySampler(int brickmapLevel, Vector3 position)
+            public void DrawDensitySampler(int brickmapLevel, Vector3 position)
             {
                 brickMapLevels[brickmapLevel].DrawDensitySampler(position);
             }

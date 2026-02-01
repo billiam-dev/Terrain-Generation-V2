@@ -8,6 +8,7 @@ namespace LevelGeneration.Terrain
     public partial class ProceduralTerrainEditor : Editor
     {
         SerializedProperty m_Material;
+        SerializedProperty m_DisableRendering;
         SerializedProperty m_BrickmapDebugLevel;
         SerializedProperty m_EnableShapeVolumes;
         SerializedProperty m_EnableLoadedBricks;
@@ -18,6 +19,7 @@ namespace LevelGeneration.Terrain
         SerializedProperty m_DensitySamplerPosition;
 
         GUIContent m_MaterialGUI;
+        GUIContent m_DisableRenderingGUI;
         GUIContent m_BrickmapDebugLevelGUI;
         GUIContent m_EnableShapeVolumesGUI;
         GUIContent m_EnableLoadedBricksGUI;
@@ -34,6 +36,7 @@ namespace LevelGeneration.Terrain
             var o = new PropertyFetcher<ProceduralTerrain>(serializedObject);
 
             m_Material = o.Find(x => x.Material);
+            m_DisableRendering = o.Find(x => x.DisableRendering);
             m_BrickmapDebugLevel = o.Find(x => x.BrickmapDebugLevel);
             m_EnableShapeVolumes = o.Find(x => x.EnableShapeVolumes);
             m_EnableLoadedBricks = o.Find(x => x.EnableLoadedBricks);
@@ -44,6 +47,7 @@ namespace LevelGeneration.Terrain
             m_DensitySamplerPosition = o.Find(x => x.DensitySamplerPosition);
 
             m_MaterialGUI = new GUIContent("Material");
+            m_DisableRenderingGUI = new GUIContent("Disable Rendering");
             m_BrickmapDebugLevelGUI = new GUIContent("Brickmap Level");
             m_EnableShapeVolumesGUI = new GUIContent("Shape Volumes");
             m_EnableLoadedBricksGUI = new GUIContent("Loaded Bricks");
@@ -61,6 +65,7 @@ namespace LevelGeneration.Terrain
             serializedObject.Update();
 
             EditorGUILayout.PropertyField(m_Material, m_MaterialGUI);
+            EditorGUILayout.PropertyField(m_DisableRendering, m_DisableRenderingGUI);
 
             EditorGUILayout.LabelField("Debug Overlays", EditorStyles.boldLabel);
             

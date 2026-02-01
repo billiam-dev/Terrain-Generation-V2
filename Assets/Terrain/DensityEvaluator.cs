@@ -12,17 +12,14 @@ namespace LevelGeneration.Terrain
         NativeArray<float> workingDensityData;
         NativeReference<bool> positiveValueFound;
         NativeReference<bool> negativeValueFound;
-        int cellsPerBrick;
 
         double executionTime;
 
         const int k_InnerloopBatchCount = 32;
 
-        public void Allocate(int cellsPerBrick)
+        public void Allocate(int brickSize)
         {
-            this.cellsPerBrick = cellsPerBrick;
-
-            workingDensityData = new(cellsPerBrick, Allocator.Persistent);
+            workingDensityData = new(brickSize * brickSize * brickSize, Allocator.Persistent);
             positiveValueFound = new(Allocator.Persistent);
             negativeValueFound = new(Allocator.Persistent);
         }
@@ -36,15 +33,21 @@ namespace LevelGeneration.Terrain
 
         public DensityEvaluationResult ExecuteJob(NativeList<Shape> shapes, int3 brickIndex, int brickSize, int brickMapLevel, float terrainScale)
         {
+            // Brick has to evaluate adjacent values to know whether it needs to be allocated or not.
+            // This is because the mesher requires an extra point to match the bricks pointsPerAxis in cells, and also another on all sides for normal computation.
+            // By implementing a more strict check for density allocated, bricks are only allocated when absolutly necessary as opposed to simply always allocating bricks next to !isEmpty && !isFull bricks.
+            int extendedBrickSize = brickSize + 3;
+
             positiveValueFound.Value = false;
             negativeValueFound.Value = false;
 
             DensityJob job = new()
             {
                 shapes = shapes,
-                initialValue = 32.0f,
+                initialValue = ProceduralTerrain.k_InitialDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
+                extendedBrickSize = extendedBrickSize,
                 stepSize = (int)math.pow(2, brickMapLevel),
                 terrainScale = terrainScale,
                 density = workingDensityData,
@@ -53,7 +56,7 @@ namespace LevelGeneration.Terrain
             };
 
             Stopwatch.Start(ref executionTime);
-            job.ScheduleParallel(cellsPerBrick, k_InnerloopBatchCount, default).Complete();
+            job.ScheduleParallel(extendedBrickSize * extendedBrickSize * extendedBrickSize, k_InnerloopBatchCount, default).Complete();
             Stopwatch.End(ref executionTime);
 
             bool isEmpty = positiveValueFound.Value && !negativeValueFound.Value;
@@ -69,10 +72,11 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public float initialValue;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
+            [ReadOnly] public int extendedBrickSize;
             [ReadOnly] public int stepSize;
             [ReadOnly] public float terrainScale;
 
-            [NativeDisableParallelForRestriction]
+            [WriteOnly, NativeDisableParallelForRestriction]
             public NativeArray<float> density;
 
             [NativeDisableParallelForRestriction]
@@ -83,29 +87,35 @@ namespace LevelGeneration.Terrain
 
             public void Execute(int index)
             {
-                // Reset density to initial value.
-                density[index] = initialValue;
+                float newDensity = initialValue;
 
-                // Derrive world position from iteration index.
+                // Unwrap the iteration index into a 3D index using the extended brick size.
                 int x = index;
 
-                int z = x / (brickSize * brickSize);
-                x -= z * brickSize * brickSize;
+                int z = x / (extendedBrickSize * extendedBrickSize);
+                x -= z * extendedBrickSize * extendedBrickSize;
 
-                int y = x / brickSize;
-                x -= y * brickSize;
+                int y = x / extendedBrickSize;
+                x -= y * extendedBrickSize;
 
-                int3 globalCellIndex = (brickIndex * brickSize) + (new int3(x, y, z) * stepSize);
+                int3 extendedCellIndex = new(x, y, z);
+                int3 cellIndex = extendedCellIndex - 2;
+
+                // Derrive world position from iteration index.
+                int3 globalCellIndex = (brickIndex * brickSize) + (cellIndex * stepSize);
                 float3 worldPosition = (float3)globalCellIndex * terrainScale;
 
                 // Apply shapes.
+                float3 translatedPosition;
+                float distance;
+
                 foreach (Shape shape in shapes)
                 {
                     // Get a translated position using the shape's inverse matrix (worldToLocal).
-                    float3 translatedPosition = FastMul(shape.InverseMatrix, worldPosition);
+                    translatedPosition = FastMul(shape.InverseMatrix, worldPosition);
 
                     // Calculate the distance value using the SDF function of the current shape.
-                    float distance = shape.DistanceFunction switch
+                    distance = shape.DistanceFunction switch
                     {
                         DistanceFunction.Sphere => Sphere(translatedPosition, shape.Dimention1),
                         DistanceFunction.SemiSphere => SemiSphere(translatedPosition, shape.Dimention1, shape.Dimention2),
@@ -116,15 +126,19 @@ namespace LevelGeneration.Terrain
                     };
 
                     // Mix the old and new distance values using a smoothing function.
-                    density[index] = math.select(
-                        SmoothMin(density[index], distance, shape.Smoothness),
-                        SmoothMax(density[index], distance, shape.Smoothness),
+                    newDensity = math.select(
+                        SmoothMin(newDensity, distance, shape.Smoothness),
+                        SmoothMax(newDensity, distance, shape.Smoothness),
                         shape.IsSubtractive
                         );
                 }
 
-                // Update positive / negative value flags.
-                if (density[index] > 0)
+                // If the cell is in bounds of the density array, update the density array.
+                if (math.all(cellIndex >= 0) && math.all(cellIndex < brickSize))
+                    density[(cellIndex.z * brickSize * brickSize) + (cellIndex.y * brickSize) + cellIndex.x] = newDensity;
+
+                // Update positive / negative value flags, both in bounds and out of bounds values are considered in this check.
+                if (newDensity > 0)
                 {
                     if (positiveValueFound.Value == false)
                         positiveValueFound.Value = true;

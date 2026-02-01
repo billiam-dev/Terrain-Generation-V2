@@ -1,14 +1,18 @@
 using LevelGeneration.Terrain.Rendering;
 using System.Collections.Generic;
-using System.Linq;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace LevelGeneration.Terrain
 {
     public partial class ProceduralTerrain : MonoBehaviour
     {
         public Material Material;
+
+#if UNITY_EDITOR
+        public bool DisableRendering;
+#endif
 
         TerrainRenderingData m_RenderingData;
         ChunkMesher m_ChunkMesher;
@@ -39,14 +43,31 @@ namespace LevelGeneration.Terrain
             m_RenderingData = null;
             m_ChunkMesher = null;
             m_Clipmaps = null;
+            m_MaterialProperties = null;
         }
 
-        void DrawClipmapLevels()
+        void UpdateClipmap()
         {
+#if UNITY_EDITOR
+            if (DisableRendering)
+                return;
+#endif
+
+            foreach (ClipmapLevel clipmap in m_Clipmaps)
+                clipmap.Update(m_RenderingData, m_ChunkMesher, ref m_DebugInfo);
+        }
+
+        void RenderTerrain(ScriptableRenderContext context, Camera camera)
+        {
+#if UNITY_EDITOR
+            if (DisableRendering)
+                return;
+#endif
+
             m_DebugInfo.chunkRendererdThisFrame = 0;
 
             foreach (ClipmapLevel clipmap in m_Clipmaps)
-                clipmap.Draw(Material, m_MaterialProperties, m_RenderingData, m_ChunkMesher, ref m_DebugInfo);
+                clipmap.Render(camera, Material, m_MaterialProperties, ref m_DebugInfo);
         }
 
         class ClipmapLevel
@@ -58,6 +79,7 @@ namespace LevelGeneration.Terrain
 
                 readonly float3 position;
                 readonly float3 size;
+                readonly Matrix4x4 matrix;
                 
                 readonly Mesh mesh;
                 readonly Mesh[] transitionMeshes;
@@ -69,11 +91,12 @@ namespace LevelGeneration.Terrain
                     this.chunkIndex = chunkIndex;
                     this.level = level;
 
-                    float chunkSize = k_BrickSize * k_WorldScale; // TODO: pass in k_BrickSize as chunkSize
+                    float worldChunkSize = k_BrickSize * k_WorldScale; // TODO: pass in k_BrickSize as chunkSize
 
-                    position = (float3)chunkIndex * chunkSize;
-                    size = chunkSize;
-                    
+                    position = (float3)chunkIndex * worldChunkSize;
+                    size = worldChunkSize;
+                    matrix = Matrix4x4.TRS(position, Quaternion.identity, Vector3.one);
+
                     mesh = new Mesh()
                     {
                         bounds = new Bounds(size * 0.5f, size)
@@ -82,11 +105,9 @@ namespace LevelGeneration.Terrain
                     meshUpToDate = false;
                 }
 
-                public void DrawMesh(Material material, MaterialPropertyBlock mpb, TerrainRenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
+                public void Update(TerrainRenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
                 {
-                    Camera camera = renderingData.Camera;
-
-                    if (!InViewFrustum(camera))
+                    if (!InViewFrustum(renderingData.OriginCamera))
                         return;
 
                     BrickMapRenderingData brickMapRendering = renderingData.brickmapLevels[level];
@@ -99,15 +120,23 @@ namespace LevelGeneration.Terrain
 
                     if (!meshUpToDate)
                     {
-                        MeshingResult result = mesher.DoRemesh(mesh, transitionMeshes, renderingData, chunkIndex, level, k_TransitionCellPadding);
+                        MeshingResult result = mesher.DoRemesh(mesh, transitionMeshes, renderingData, chunkIndex, k_BrickSize, level, k_TransitionCellPadding);
+                        
                         debugInfo.meshingJobTimes.AddTime(result.ExecutionTime);
                         meshUpToDate = true;
+                    }
+                }
 
+                public void Render(Camera camera, Material material, MaterialPropertyBlock mpb, ref TerrainDebugInfo debugInfo)
+                {
+                    if (!InViewFrustum(camera))
+                        return;
+
+                    if (meshUpToDate && mesh.vertexCount > 2)
+                    {
+                        Graphics.DrawMesh(mesh, matrix, material, 0, camera, 0, mpb);
                         debugInfo.chunkRendererdThisFrame++;
                     }
-
-                    if (mesh.vertexCount > 2)
-                        Graphics.DrawMesh(mesh, Matrix4x4.TRS(position, Quaternion.identity, Vector3.one), material, 0, camera, 0, mpb);
                 }
 
                 bool InViewFrustum(Camera camera)
@@ -118,20 +147,17 @@ namespace LevelGeneration.Terrain
             }
 
             readonly Dictionary<int3, Chunk> chunks;
-            readonly int mapSize;
             readonly int level;
 
             public ClipmapLevel(int mapSize, int level)
             {
-                this.mapSize = mapSize;
                 this.level = level;
-
                 chunks = new(mapSize * mapSize * mapSize);
             }
 
-            public void Draw(Material material, MaterialPropertyBlock mpb, TerrainRenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
+            public void Update(TerrainRenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
             {
-                int3[] allocatedBrickIndices = renderingData.brickmapLevels[level].AllocatedBricks;
+                DensitySampler densitySampler = renderingData.brickmapLevels[level].DensitySampler;
 
                 // Note this method of dictionary management is crap because we are already doing this in brickmap levels.
                 // It may be smarter to simply send a list of chunks that were allocated and de-allocated per-frame.
@@ -142,22 +168,30 @@ namespace LevelGeneration.Terrain
 
                 foreach (int3 chunkIndex in existingChunks)
                 {
-                    if (!allocatedBrickIndices.Contains(chunkIndex))
+                    if (!densitySampler.ContainsBrick(chunkIndex))
                         chunks.Remove(chunkIndex);
                 }
 
                 // Add new allocated chunks.
-                foreach (int3 chunkIndex in allocatedBrickIndices)
+                foreach (int3 chunkIndex in densitySampler.GetAllocatedBricks())
                 {
                     if (!chunks.ContainsKey(chunkIndex))
                         chunks.Add(chunkIndex, new Chunk(chunkIndex, level));
                 }
 
-                // Draw chunks
+                // Update chunks.
                 foreach (int3 chunkIndex in chunks.Keys)
-                {
-                    chunks[chunkIndex].DrawMesh(material, mpb, renderingData, mesher, ref debugInfo);
-                }
+                    chunks[chunkIndex].Update(renderingData, mesher, ref debugInfo);
+            }
+
+            public void Render(Camera camera, Material material, MaterialPropertyBlock mpb, ref TerrainDebugInfo debugInfo)
+            {
+                Stopwatch.Start(ref debugInfo.frameTime);
+
+                foreach (int3 chunkIndex in chunks.Keys)
+                    chunks[chunkIndex].Render(camera, material, mpb, ref debugInfo);
+
+                Stopwatch.End(ref debugInfo.frameTime);
             }
         }
     }

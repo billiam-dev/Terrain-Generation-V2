@@ -70,19 +70,19 @@ namespace LevelGeneration.Terrain.DevTools
              * In this 2D example, there are 9 positions a lower grid can be in relation to it's encompassing grid.
              * From each case, we must algorithmically decide which chunks to skip in the encompassing grid.
              * 
-             * These cases can be represented by an internal offset in each axis, with potential values -1, 0 and 1.
-             * This covers all 9 internal position cases.
+             * These cases can be represented by an public offset in each axis, with potential values -1, 0 and 1.
+             * This covers all 9 public position cases.
              * 
              * We can then use each axis in relation with our offset index to skip the proper chunks.
             */
 
             m_ClipmapLevelOrigins[clipmapLevelIndex] = originChunkIndex;
 
-            int3 lowerGridInternalOffset = 0;
+            int3 lowerGridpublicOffset = 0;
             if (clipmapLevelIndex > 0)
             {
-                lowerGridInternalOffset = m_ClipmapLevelOrigins[clipmapLevelIndex - 1] - originChunkIndex - originChunkIndex;
-                lowerGridInternalOffset /= 2; // Not exactly sure why I have to divide by 2 but it works.
+                lowerGridpublicOffset = m_ClipmapLevelOrigins[clipmapLevelIndex - 1] - originChunkIndex - originChunkIndex;
+                lowerGridpublicOffset /= 2; // Not exactly sure why I have to divide by 2 but it works.
             }
 
             int3 offsetIndex;
@@ -99,15 +99,15 @@ namespace LevelGeneration.Terrain.DevTools
                 {
                     offsetIndex = new int3(x, y, 0) - halfClipmapSize;
 
-                    // Skip chunks based on lowerGridInternalOffset, chunk is already being rendered by a higher LOD clipmap level.
+                    // Skip chunks based on lowerGridpublicOffset, chunk is already being rendered by a higher LOD clipmap level.
                     // Arrived at this set of comparisons by determining what cells should be rendered and then flipping the logic for early continue.
                     if (clipmapLevelIndex > 0)
                     {
-                        if (offsetIndex.x < lowerGridInternalOffset.x + quarterClipmapSize &&
-                            offsetIndex.x >= lowerGridInternalOffset.x - quarterClipmapSize)
+                        if (offsetIndex.x < lowerGridpublicOffset.x + quarterClipmapSize &&
+                            offsetIndex.x >= lowerGridpublicOffset.x - quarterClipmapSize)
                         {
-                            if (offsetIndex.y < lowerGridInternalOffset.y + quarterClipmapSize &&
-                            offsetIndex.y >= lowerGridInternalOffset.y - quarterClipmapSize)
+                            if (offsetIndex.y < lowerGridpublicOffset.y + quarterClipmapSize &&
+                            offsetIndex.y >= lowerGridpublicOffset.y - quarterClipmapSize)
                             {
                                 continue;
                             }
