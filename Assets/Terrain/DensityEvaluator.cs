@@ -44,7 +44,7 @@ namespace LevelGeneration.Terrain
             DensityJob job = new()
             {
                 shapes = shapes,
-                initialValue = ProceduralTerrain.k_InitialDensityValue,
+                initialValue = ProceduralTerrain.k_EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 extendedBrickSize = extendedBrickSize,
@@ -62,7 +62,7 @@ namespace LevelGeneration.Terrain
             bool isEmpty = positiveValueFound.Value && !negativeValueFound.Value;
             bool isFull = negativeValueFound.Value && !positiveValueFound.Value;
 
-            return new DensityEvaluationResult(workingDensityData, !isEmpty && !isFull, executionTime);
+            return new DensityEvaluationResult(workingDensityData, isEmpty, isFull, executionTime);
         }
 
         [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
@@ -112,24 +112,24 @@ namespace LevelGeneration.Terrain
                 foreach (Shape shape in shapes)
                 {
                     // Get a translated position using the shape's inverse matrix (worldToLocal).
-                    translatedPosition = FastMul(shape.InverseMatrix, worldPosition);
+                    translatedPosition = FastMul(shape.inverseMatrix, worldPosition);
 
                     // Calculate the distance value using the SDF function of the current shape.
-                    distance = shape.DistanceFunction switch
+                    distance = shape.distanceFunction switch
                     {
-                        DistanceFunction.Sphere => Sphere(translatedPosition, shape.Dimention1),
-                        DistanceFunction.SemiSphere => SemiSphere(translatedPosition, shape.Dimention1, shape.Dimention2),
-                        DistanceFunction.Capsule => Capsule(translatedPosition, shape.Dimention1, shape.Dimention2),
-                        DistanceFunction.Torus => Torus(translatedPosition, shape.Dimention1, shape.Dimention2),
-                        DistanceFunction.Cube => Cube(translatedPosition, shape.Dimention1, shape.Dimention2, shape.Dimention3),
+                        DistanceFunction.Sphere => Sphere(translatedPosition, shape.dimention1),
+                        DistanceFunction.SemiSphere => SemiSphere(translatedPosition, shape.dimention1, shape.dimention2),
+                        DistanceFunction.Capsule => Capsule(translatedPosition, shape.dimention1, shape.dimention2),
+                        DistanceFunction.Torus => Torus(translatedPosition, shape.dimention1, shape.dimention2),
+                        DistanceFunction.Cube => Cube(translatedPosition, shape.dimention1, shape.dimention2, shape.dimention3),
                         _ => 0,
                     };
 
                     // Mix the old and new distance values using a smoothing function.
                     newDensity = math.select(
-                        SmoothMin(newDensity, distance, shape.Smoothness),
-                        SmoothMax(newDensity, distance, shape.Smoothness),
-                        shape.IsSubtractive
+                        SmoothMin(newDensity, distance, shape.smoothnessConstant),
+                        SmoothMax(newDensity, distance, shape.smoothnessConstant),
+                        shape.blendMode == BlendMode.Subtractive
                         );
                 }
 
@@ -207,14 +207,11 @@ namespace LevelGeneration.Terrain
              * Note: This is the best method I have found on Inigo Quilez's website for both speed and accuracy.
             */
 
-            // TODO: Multiply the smoothness by 6 outside of the loop!
-
             const float OneOverSix = 0.16666666666666666666666666666667f; // Cache the (1 / 6) calculation performed in SmoothMin & SmoothMax; division is slow.
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static float SmoothMax(float a, float b, float k)
             {
-                k *= 6.0f;
                 float h = math.max(k - math.abs(-a + b), 0.0f) / k;
                 return -(math.min(-a, -b) - h * h * h * k * OneOverSix);
             }
@@ -222,7 +219,6 @@ namespace LevelGeneration.Terrain
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static float SmoothMin(float a, float b, float k)
             {
-                k *= 6.0f;
                 float h = math.max(k - math.abs(a - b), 0.0f) / k;
                 return math.min(a, b) - h * h * h * k * OneOverSix;
             }
@@ -241,18 +237,38 @@ namespace LevelGeneration.Terrain
 
     public readonly struct DensityEvaluationResult
     {
+        enum State
+        {
+            Empty = 0,
+            Full = 1,
+            Partial = 2,
+            Error = 3
+        }
+
         readonly NativeArray<float> density;
-        readonly bool intersectsSurface;
+        readonly State state;
         readonly double executionTime;
 
         public readonly NativeArray<float> Density => density;
-        public readonly bool IntersectsSurface => intersectsSurface;
+        public readonly bool IsEmpty => state == State.Empty;
+        public readonly bool IsFull => state == State.Full;
+        public readonly bool IntersectsSurface => state == State.Partial;
+        public readonly int DensityState => (int)state;
         public readonly double ExecutionTime => executionTime;
 
-        public DensityEvaluationResult(NativeArray<float> density, bool intersectsSurface, double executionTime)
+        public DensityEvaluationResult(NativeArray<float> density, bool isEmpty, bool isFull, double executionTime)
         {
             this.density = density;
-            this.intersectsSurface = intersectsSurface;
+
+            if (!isEmpty && !isFull)
+                state = State.Partial;
+            else if (isEmpty)
+                state = State.Empty;
+            else if (isFull)
+                state = State.Full;
+            else
+                state = State.Error;
+
             this.executionTime = executionTime;
         }
     }

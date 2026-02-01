@@ -1,5 +1,8 @@
-using LevelGeneration.Terrain.Rendering;
+using LevelGeneration.Terrain.Meshing;
+using System;
 using System.Collections.Generic;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -14,7 +17,7 @@ namespace LevelGeneration.Terrain
         public bool DisableRendering;
 #endif
 
-        TerrainRenderingData m_RenderingData;
+        RenderingData m_RenderingData;
         ChunkMesher m_ChunkMesher;
         ClipmapLevel[] m_Clipmaps;
 
@@ -28,7 +31,7 @@ namespace LevelGeneration.Terrain
             {
                 brickmapLevels = m_DensityCache.GetRenderingData()
             };
-            
+
             m_ChunkMesher = new ChunkMesher();
 
             m_Clipmaps = new ClipmapLevel[k_NumBrickMapLevels];
@@ -40,7 +43,6 @@ namespace LevelGeneration.Terrain
 
         void CleanupRendering()
         {
-            m_RenderingData = null;
             m_ChunkMesher = null;
             m_Clipmaps = null;
             m_MaterialProperties = null;
@@ -77,8 +79,8 @@ namespace LevelGeneration.Terrain
                 readonly int3 chunkIndex;
                 readonly int level;
 
-                readonly float3 position;
-                readonly float3 size;
+                readonly float3 worldPosition;
+                readonly float3 worldSize;
                 readonly Matrix4x4 matrix;
                 
                 readonly Mesh mesh;
@@ -91,39 +93,40 @@ namespace LevelGeneration.Terrain
                     this.chunkIndex = chunkIndex;
                     this.level = level;
 
-                    float worldChunkSize = k_BrickSize * k_WorldScale; // TODO: pass in k_BrickSize as chunkSize
-
-                    position = (float3)chunkIndex * worldChunkSize;
-                    size = worldChunkSize;
-                    matrix = Matrix4x4.TRS(position, Quaternion.identity, Vector3.one);
+                    worldSize = k_BrickSize * k_WorldScale;
+                    worldPosition = (float3)chunkIndex * worldSize;
+                    
+                    matrix = Matrix4x4.TRS(worldPosition, Quaternion.identity, Vector3.one);
 
                     mesh = new Mesh()
                     {
-                        bounds = new Bounds(size * 0.5f, size)
+                        bounds = new Bounds(worldSize * 0.5f, worldSize)
                     };
 
                     meshUpToDate = false;
                 }
 
-                public void Update(TerrainRenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
+                public void Update(RenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
                 {
                     if (!InViewFrustum(renderingData.OriginCamera))
                         return;
 
-                    BrickMapRenderingData brickMapRendering = renderingData.brickmapLevels[level];
+                    BrickmapRenderingData brickMapRendering = renderingData.brickmapLevels[level];
 
-                    if (brickMapRendering.IsBrickPendingRemesh(chunkIndex))
+                    // Check if the density data within this chunk has changed and flag for remeshing if true.
+                    if (brickMapRendering.modifiedBricks.Contains(chunkIndex))
                     {
-                        brickMapRendering.RemovePendingRemeshFlag(chunkIndex);
+                        brickMapRendering.modifiedBricks.Remove(chunkIndex);
                         meshUpToDate = false;
                     }
 
+                    // Remesh if necessary.
                     if (!meshUpToDate)
                     {
-                        MeshingResult result = mesher.DoRemesh(mesh, transitionMeshes, renderingData, chunkIndex, k_BrickSize, level, k_TransitionCellPadding);
-                        
-                        debugInfo.meshingJobTimes.AddTime(result.ExecutionTime);
+                        MeshingResult result = mesher.DoRemesh(mesh, transitionMeshes, renderingData.brickmapLevels[level].densitySampler, chunkIndex, k_BrickSize, k_WorldScale, level, k_TransitionCellPadding);
                         meshUpToDate = true;
+
+                        debugInfo.meshingJobTimes.AddTime(result.ExecutionTime);
                     }
                 }
 
@@ -142,7 +145,7 @@ namespace LevelGeneration.Terrain
                 bool InViewFrustum(Camera camera)
                 {
                     Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
-                    return GeometryUtility.TestPlanesAABB(frustumPlanes, new Bounds(position + (size * 0.5f), size));
+                    return GeometryUtility.TestPlanesAABB(frustumPlanes, new Bounds(worldPosition + (worldSize * 0.5f), worldSize));
                 }
             }
 
@@ -155,9 +158,9 @@ namespace LevelGeneration.Terrain
                 chunks = new(mapSize * mapSize * mapSize);
             }
 
-            public void Update(TerrainRenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
+            public void Update(RenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
             {
-                DensitySampler densitySampler = renderingData.brickmapLevels[level].DensitySampler;
+                DensitySampler densitySampler = renderingData.brickmapLevels[level].densitySampler;
 
                 // Note this method of dictionary management is crap because we are already doing this in brickmap levels.
                 // It may be smarter to simply send a list of chunks that were allocated and de-allocated per-frame.
@@ -168,7 +171,7 @@ namespace LevelGeneration.Terrain
 
                 foreach (int3 chunkIndex in existingChunks)
                 {
-                    if (!densitySampler.ContainsBrick(chunkIndex))
+                    if (!densitySampler.BrickIsAllocated(chunkIndex))
                         chunks.Remove(chunkIndex);
                 }
 
@@ -193,6 +196,99 @@ namespace LevelGeneration.Terrain
 
                 Stopwatch.End(ref debugInfo.frameTime);
             }
+        }
+
+        struct RenderingData
+        {
+            public BrickmapRenderingData[] brickmapLevels;
+            public Camera OriginCamera;
+        }
+
+        struct BrickmapRenderingData : IDisposable
+        {
+            public HashSet<int3> modifiedBricks;
+            public DensitySampler densitySampler;
+
+            public void Allocate(int size)
+            {
+                modifiedBricks = new();
+                densitySampler.Allocate(size);
+            }
+
+            public void Dispose()
+            {
+                modifiedBricks = null;
+                densitySampler.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Provides an interface for mesher jobs to read density data.
+    /// Regions of density data (bricks) can be added to the hash map and sampled via a pointer to the original array.
+    /// </summary>
+    public struct DensitySampler : IDisposable
+    {
+        NativeHashMap<int3, int> bricks;
+
+        [NativeDisableUnsafePtrRestriction]
+        NativeHashMap<int3, IntPtr> densityPointers;
+
+        public void Allocate(int size)
+        {
+            bricks = new(size * size * size, Allocator.Persistent);
+            densityPointers = new(size * size * size, Allocator.Persistent);
+        }
+
+        public void Dispose()
+        {
+            bricks.Dispose();
+            densityPointers.Dispose();
+        }
+
+        public void LoadBrick(int3 index) => bricks.Add(index, 0); // Default state 0 = empty.
+
+        public void UnloadBrick(int3 index) => bricks.Remove(index);
+
+        public void SetBrickState(int3 index, int state) => bricks[index] = state;
+
+        public void AttatchDensityData(int3 index, IntPtr densityPointer) => densityPointers.Add(index, densityPointer);
+
+        public void RemoveDensityData(int3 index) => densityPointers.Remove(index);
+
+        public bool BrickIsAllocated(int3 index) => densityPointers.ContainsKey(index);
+
+        public int3[] GetAllocatedBricks()
+        {
+            // TODO: This is possibly crap.
+
+            NativeArray<int3> nativeIndices = densityPointers.GetKeyArray(Allocator.Temp);
+
+            int3[] indices = nativeIndices.ToArray();
+
+            nativeIndices.Dispose();
+
+            return indices;
+        }
+
+        public unsafe readonly float Sample(int3 globalCellIndex, int brickSize)
+        {
+            int3 brickIndex = (int3)math.floor((double3)globalCellIndex / brickSize); // TODO: find a way to do this without the cast. Also note that casting to a float3 fuks everything up with precision errors.
+
+            // Early return if the brick is not loaded.
+            if (!bricks.ContainsKey(brickIndex))
+                return ProceduralTerrain.k_EmptyDensityValue;
+
+            // Early return if the brick is completely empty or full.
+            int brickState = bricks[brickIndex];
+            if (brickState != 2)
+                return math.select(ProceduralTerrain.k_FullDensityValue, ProceduralTerrain.k_EmptyDensityValue, brickState == 0);
+
+            int3 localCellIndex = globalCellIndex - (brickIndex * brickSize);
+            int densityIndex = (localCellIndex.z * brickSize * brickSize) + (localCellIndex.y * brickSize) + localCellIndex.x;
+
+            float* ptr = (float*)densityPointers[brickIndex];
+            return *(ptr + densityIndex);
         }
     }
 }

@@ -7,16 +7,17 @@ namespace LevelGeneration.Terrain
     /// </summary>
     public readonly struct Shape
     {
-        readonly AffineTransform matrix;
-        readonly AffineTransform inverseMatrix;
+        public readonly AffineTransform matrix;
+        public readonly AffineTransform inverseMatrix;
 
-        readonly DistanceFunction distanceFunction;
-        readonly BlendMode blendMode;
-        readonly float smoothness;
+        public readonly DistanceFunction distanceFunction;
+        public readonly BlendMode blendMode;
+        public readonly float smoothness;
+        public readonly float smoothnessConstant;
 
-        readonly float dimention1;
-        readonly float dimention2;
-        readonly float dimention3;
+        public readonly float dimention1;
+        public readonly float dimention2;
+        public readonly float dimention3;
 
         public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1, float dimention2, float dimention3)
         {
@@ -27,24 +28,14 @@ namespace LevelGeneration.Terrain
             this.blendMode = blendMode;
             this.smoothness = smoothness;
 
+            // The first step of the cubic polynomial smooth min and max methods is to multiply the smoothness value by 6.
+            // As a small optimization for speed, that is done on shape creation, rather than inside of the loop.
+            smoothnessConstant = smoothness * 6.0f;
+
             this.dimention1 = dimention1;
             this.dimention2 = dimention2;
             this.dimention3 = dimention3;
         }
-
-        public readonly AffineTransform Matrix => matrix;
-        public readonly AffineTransform InverseMatrix => inverseMatrix;
-
-        public readonly DistanceFunction DistanceFunction => distanceFunction;
-        public readonly bool IsAdditive => blendMode == BlendMode.Additive;
-        public readonly bool IsSubtractive => blendMode == BlendMode.Subtractive;
-        public readonly float Smoothness => smoothness;
-
-        public readonly float Dimention1 => dimention1;
-        public readonly float Dimention2 => dimention2;
-        public readonly float Dimention3 => dimention3;
-
-        public bool IsNull => dimention1 == 0 && dimention2 == 0 && dimention3 == 0;
 
         // Multiplier for how much the smoothness value should extend the brick volume effected by this shape.
         // Larger values result in a larger volume allowing for smoothing over larger distances at the expense of speed.
@@ -92,7 +83,7 @@ namespace LevelGeneration.Terrain
             cornerPoints[7] = new float3(-boundsVolume.x, -boundsVolume.y, -boundsVolume.z);
 
             for (int i = 0; i < 8; i++)
-                cornerPoints[i] = math.mul(Matrix, new float4(cornerPoints[i], 1.0f)).xyz;
+                cornerPoints[i] = math.mul(matrix, new float4(cornerPoints[i], 1.0f)).xyz;
 
             // Recompute the aabb volume using the transformed points.
             float minX = float.MaxValue;
@@ -120,7 +111,12 @@ namespace LevelGeneration.Terrain
                 );
 
             volume = boundsVolume;
-            position = Matrix.t;
+            position = matrix.t;
+        }
+
+        public bool IsNull()
+        {
+            return dimention1 == 0 && dimention2 == 0 && dimention3 == 0;
         }
     }
 

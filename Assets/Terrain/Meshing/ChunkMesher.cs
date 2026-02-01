@@ -4,7 +4,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace LevelGeneration.Terrain.Rendering
+namespace LevelGeneration.Terrain.Meshing
 {
     public class ChunkMesher
     {
@@ -40,7 +40,7 @@ namespace LevelGeneration.Terrain.Rendering
             m_MeshStartIndices.Dispose();
         }
 
-        public MeshingResult DoRemesh(Mesh mesh, Mesh[] transitionMeshes, TerrainRenderingData renderingData, int3 chunkIndex, int chunkSize, int clipmapLevel, float transitionCellPadding)
+        public MeshingResult DoRemesh(Mesh mesh, Mesh[] transitionMeshes, DensitySampler densitySampler, int3 chunkIndex, int chunkSize, float worldScale, int clipmapLevel, float transitionCellPadding)
         {
             m_Vertices.Clear();
             m_Indices.Clear();
@@ -50,9 +50,9 @@ namespace LevelGeneration.Terrain.Rendering
             {
                 clipmapLevel = clipmapLevel,
                 chunkIndex = chunkIndex,
-                chunks = renderingData.brickmapLevels[clipmapLevel].DensitySampler,
+                chunks = densitySampler,
                 chunkSize = chunkSize,
-                cellScale = 1, // TODO
+                cellScale = worldScale,
                 padding = transitionCellPadding,
                 vertices = m_Vertices,
                 indices = m_Indices,

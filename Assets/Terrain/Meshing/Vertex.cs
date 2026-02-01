@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using Unity.Mathematics;
 using UnityEngine.Rendering;
 
-namespace LevelGeneration.Terrain.Rendering
+namespace LevelGeneration.Terrain.Meshing
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct Vertex

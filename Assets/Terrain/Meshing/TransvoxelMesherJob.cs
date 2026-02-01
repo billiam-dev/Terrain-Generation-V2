@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace LevelGeneration.Terrain.Rendering
+namespace LevelGeneration.Terrain.Meshing
 {
     // Transvoxel: https://transvoxel.org/, https://transvoxel.org/Lengyel-VoxelTerrain.pdf
     // Transvoxel Tables: https://github.com/EricLengyel/Transvoxel/blob/main/Transvoxel.cpp
