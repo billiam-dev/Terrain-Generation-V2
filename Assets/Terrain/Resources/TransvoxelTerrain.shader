@@ -42,7 +42,7 @@ Shader "TransvoxelTerrain"
             half3 _BaseColor;
 
             int _PackedLODData;
-            half3 _DebugColor; // For runtime highlighting of regular and transition meshes.
+            half3 _ClipmapDebugColor;
 
             Varyings vert(Attributes IN)
             {
@@ -79,7 +79,7 @@ Shader "TransvoxelTerrain"
                 float lightIntensity = saturate(dot(IN.normalWS, -mainLight.direction));
                 float3 lightColor = mainLight.color * lightIntensity + _GlossyEnvironmentColor.rgb;
 
-                return albedoColor * lightColor;// * _DebugColor;
+                return albedoColor * lightColor * _ClipmapDebugColor;
             }
 
             ENDHLSL

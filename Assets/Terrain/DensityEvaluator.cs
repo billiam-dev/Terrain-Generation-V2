@@ -102,7 +102,7 @@ namespace LevelGeneration.Terrain
                 int3 cellIndex = extendedCellIndex - 2;
 
                 // Derrive world position from iteration index.
-                int3 globalCellIndex = (brickIndex * brickSize) + (cellIndex * stepSize);
+                int3 globalCellIndex = (brickIndex * brickSize * stepSize) + (cellIndex * stepSize);
                 float3 worldPosition = (float3)globalCellIndex * terrainScale;
 
                 // Apply shapes.

@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -6,7 +7,11 @@ using UnityEngine.Rendering;
 
 namespace LevelGeneration.Terrain.Meshing
 {
-    public class ChunkMesher
+    /// <summary>
+    /// A helper object to handle a single meshing handler instance.
+    /// Allocates and queues a single transvoxel meshing job at a time.
+    /// </summary>
+    public class ChunkMesher : IDisposable
     {
         NativeList<Vertex> m_Vertices;
         NativeList<ushort> m_Indices;
@@ -16,7 +21,8 @@ namespace LevelGeneration.Terrain.Meshing
         // x = vertices split, y = indices split.
         NativeArray<int2> m_MeshStartIndices;
 
-        double executionTime;
+        MeshingTask m_CurrentTask;
+        bool m_HasTask;
 
         const int k_InitialArrayCapacity = 512;
 
@@ -26,48 +32,86 @@ namespace LevelGeneration.Terrain.Meshing
             | MeshUpdateFlags.DontResetBoneBounds
             | MeshUpdateFlags.DontValidateIndices;
 
-        public ChunkMesher()
+        public void Allocate()
         {
             m_Vertices = new(k_InitialArrayCapacity, Allocator.Persistent);
             m_Indices = new(k_InitialArrayCapacity, Allocator.Persistent);
             m_MeshStartIndices = new(6, Allocator.Persistent);
         }
 
-        ~ChunkMesher()
+        public void Dispose()
         {
             m_Vertices.Dispose();
             m_Indices.Dispose();
             m_MeshStartIndices.Dispose();
         }
 
-        public MeshingResult DoRemesh(Mesh mesh, Mesh[] transitionMeshes, DensitySampler densitySampler, int3 chunkIndex, int chunkSize, float worldScale, int clipmapLevel, float transitionCellPadding)
+        /// <summary>
+        /// Schedule and immediately complete a meshing job.
+        /// </summary>
+        public void ScheduleAndCompleteTask(MeshingTask meshingTask)
         {
+            JobHandle job = ScheduleTask(meshingTask);
+            job.Complete();
+            CompleteTask();
+        }
+
+        /// <summary>
+        /// Schedule a meshing job.
+        /// </summary>
+        public JobHandle ScheduleTask(MeshingTask meshingTask)
+        {
+            if (m_HasTask)
+            {
+                Debug.LogWarning($"Could not schedule meshing task for chunk {meshingTask.chunkIndex}, mesher already active.");
+                return new JobHandle();
+            }
+
+            m_CurrentTask = meshingTask;
+
             m_Vertices.Clear();
             m_Indices.Clear();
-            m_VertexIndices = new(chunkSize * chunkSize * chunkSize, Allocator.TempJob);
+            m_VertexIndices = new(meshingTask.chunkSize * meshingTask.chunkSize * meshingTask.chunkSize, Allocator.TempJob);
 
             TransvoxelMesherJob mesherJob = new()
             {
-                clipmapLevel = clipmapLevel,
-                chunkIndex = chunkIndex,
-                chunks = densitySampler,
-                chunkSize = chunkSize,
-                cellScale = worldScale,
-                padding = transitionCellPadding,
+                clipmapLevel = meshingTask.clipmapLevel,
+                chunkIndex = meshingTask.chunkIndex,
+                chunkSize = meshingTask.chunkSize,
+                cellScale = meshingTask.worldScale,
+                stepSize = math.pow(2, meshingTask.clipmapLevel),
+                padding = meshingTask.transitionCellPadding,
+                chunks = meshingTask.densitySampler,
                 vertices = m_Vertices,
                 indices = m_Indices,
                 meshStartIndices = m_MeshStartIndices,
                 vertexIndices = m_VertexIndices
             };
 
-            Stopwatch.Start(ref executionTime);
+            m_HasTask = true;
 
-            mesherJob.Schedule(default).Complete();
+            return mesherJob.Schedule(default);
+        }
 
-            Stopwatch.End(ref executionTime);
+        /// <summary>
+        /// Complete the current meshing job.
+        /// </summary>
+        public void CompleteTask()
+        {
+            if (!m_HasTask)
+            {
+                Debug.LogWarning($"Could not complete meshing task, no task active.");
+                return;
+            }
 
+            UpdateMeshData(m_CurrentTask.mesh, m_CurrentTask.transitionMeshes);
             m_VertexIndices.Dispose();
 
+            m_HasTask = false;
+        }
+
+        void UpdateMeshData(Mesh mesh, Mesh[] transitionMeshes)
+        {
             NativeArray<Vertex> vertices = m_Vertices.ToArray(Allocator.Temp);
             NativeArray<ushort> indices = m_Indices.ToArray(Allocator.Temp);
 
@@ -82,7 +126,7 @@ namespace LevelGeneration.Terrain.Meshing
                         transitionMeshes[i].Clear();
                 }
 
-                return new MeshingResult(vertices.Length, indices.Length, executionTime);
+                return;
             }
 
             SubMeshDescriptor subMeshDescriptor = new(0, 0, MeshTopology.Triangles);
@@ -120,7 +164,7 @@ namespace LevelGeneration.Terrain.Meshing
 
             // Update transition meshes
             if (transitionMeshes == null)
-                return new MeshingResult(vertices.Length, indices.Length, executionTime);
+                return;
 
             for (int i = 0; i < 6; i++)
             {
@@ -157,26 +201,35 @@ namespace LevelGeneration.Terrain.Meshing
                 transitionMeshes[i].subMeshCount = 1;
                 transitionMeshes[i].SetSubMesh(0, subMeshDescriptor, k_UpdateFlags);
             }
-
-            return new MeshingResult(vertices.Length, indices.Length, executionTime);
         }
     }
 
-    public readonly struct MeshingResult
+    public readonly struct MeshingTask
     {
-        readonly int vertexCount;
-        readonly int indexCount;
-        readonly double executionTime;
+        public readonly Mesh mesh;
+        public readonly Mesh[] transitionMeshes;
+        public readonly int3 chunkIndex;
+        public readonly int chunkSize;
+        public readonly float worldScale;
+        public readonly int clipmapLevel;
+        public readonly float transitionCellPadding;
+        public readonly DensitySampler densitySampler;
 
-        public readonly int VertexCount => vertexCount;
-        public readonly int IndexCount => indexCount;
-        public readonly double ExecutionTime => executionTime;
-
-        public MeshingResult(int vertexCount, int indexCount, double executionTime)
+        public MeshingTask(Mesh mesh, Mesh[] transitionMeshes, int3 chunkIndex, int chunkSize, float worldScale, int clipmapLevel, float transitionCellPadding, DensitySampler densitySampler)
         {
-            this.vertexCount = vertexCount;
-            this.indexCount = indexCount;
-            this.executionTime = executionTime;
+            this.mesh = mesh;
+            this.transitionMeshes = transitionMeshes;
+            this.chunkIndex = chunkIndex;
+            this.chunkSize = chunkSize;
+            this.worldScale = worldScale;
+            this.clipmapLevel = clipmapLevel;
+            this.transitionCellPadding = transitionCellPadding;
+            this.densitySampler = densitySampler;
+        }
+
+        public bool CanReplace(MeshingTask task)
+        {
+            return chunkIndex.Equals(task.chunkIndex) && clipmapLevel.Equals(task.clipmapLevel);
         }
     }
 }

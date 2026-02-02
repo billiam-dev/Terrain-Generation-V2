@@ -163,11 +163,6 @@ namespace LevelGeneration.Terrain
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
                 brickMapLevels[levelIndex].DrawAllocatedBricks(sceneCamera);
             }
-
-            public void Debug_GetBrickVolumeFromAABB(int level, float3 boundsPosition, float3 boundsVolume, out int3 initialIndex, out int3 volume)
-            {
-                brickMapLevels[level].GetBrickVolumeFromAABB(boundsPosition, boundsVolume, out initialIndex, out volume);
-            }
         }
     }
 }

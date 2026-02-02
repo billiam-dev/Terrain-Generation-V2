@@ -8,7 +8,7 @@ namespace LevelGeneration.Terrain
     public partial class ProceduralTerrainEditor : Editor
     {
         SerializedProperty m_Material;
-        SerializedProperty m_DisableRendering;
+
         SerializedProperty m_BrickmapDebugLevel;
         SerializedProperty m_EnableShapeVolumes;
         SerializedProperty m_EnableLoadedBricks;
@@ -18,8 +18,11 @@ namespace LevelGeneration.Terrain
         SerializedProperty m_EnableDensitySampler;
         SerializedProperty m_DensitySamplerPosition;
 
+        SerializedProperty m_DisableRendering;
+        SerializedProperty m_ColorClipmapLevels;
+
         GUIContent m_MaterialGUI;
-        GUIContent m_DisableRenderingGUI;
+        
         GUIContent m_BrickmapDebugLevelGUI;
         GUIContent m_EnableShapeVolumesGUI;
         GUIContent m_EnableLoadedBricksGUI;
@@ -29,6 +32,9 @@ namespace LevelGeneration.Terrain
         GUIContent m_EnableDensitySamplerGUI;
         GUIContent m_DensitySamplerPositionGUI;
 
+        GUIContent m_DisableRenderingGUI;
+        GUIContent m_ColorClipmapLevelsGUI;
+
         ProceduralTerrain m_Target;
 
         void OnEnable()
@@ -36,7 +42,7 @@ namespace LevelGeneration.Terrain
             var o = new PropertyFetcher<ProceduralTerrain>(serializedObject);
 
             m_Material = o.Find(x => x.Material);
-            m_DisableRendering = o.Find(x => x.DisableRendering);
+            
             m_BrickmapDebugLevel = o.Find(x => x.BrickmapDebugLevel);
             m_EnableShapeVolumes = o.Find(x => x.EnableShapeVolumes);
             m_EnableLoadedBricks = o.Find(x => x.EnableLoadedBricks);
@@ -46,8 +52,11 @@ namespace LevelGeneration.Terrain
             m_EnableDensitySampler = o.Find(x => x.EnableDensitySampler);
             m_DensitySamplerPosition = o.Find(x => x.DensitySamplerPosition);
 
+            m_DisableRendering = o.Find(x => x.DisableRendering);
+            m_ColorClipmapLevels = o.Find(x => x.ColorClipmapLevels);
+
             m_MaterialGUI = new GUIContent("Material");
-            m_DisableRenderingGUI = new GUIContent("Disable Rendering");
+
             m_BrickmapDebugLevelGUI = new GUIContent("Brickmap Level");
             m_EnableShapeVolumesGUI = new GUIContent("Shape Volumes");
             m_EnableLoadedBricksGUI = new GUIContent("Loaded Bricks");
@@ -57,6 +66,9 @@ namespace LevelGeneration.Terrain
             m_EnableDensitySamplerGUI = new GUIContent("Enable");
             m_DensitySamplerPositionGUI = new GUIContent("Position");
 
+            m_DisableRenderingGUI = new GUIContent("Disable Rendering");
+            m_ColorClipmapLevelsGUI = new GUIContent("Highlight Clipmap Levels");
+
             m_Target = (ProceduralTerrain)target;
         }
 
@@ -65,9 +77,8 @@ namespace LevelGeneration.Terrain
             serializedObject.Update();
 
             EditorGUILayout.PropertyField(m_Material, m_MaterialGUI);
-            EditorGUILayout.PropertyField(m_DisableRendering, m_DisableRenderingGUI);
 
-            EditorGUILayout.LabelField("Debug Overlays", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Brickmap Debug", EditorStyles.boldLabel);
             
             EditorGUILayout.PropertyField(m_BrickmapDebugLevel, m_BrickmapDebugLevelGUI);
 
@@ -86,6 +97,10 @@ namespace LevelGeneration.Terrain
                 EditorGUILayout.PropertyField(m_DensitySamplerPosition, m_DensitySamplerPositionGUI);
                 EditorGUI.indentLevel--;
             }
+
+            EditorGUILayout.LabelField("Rendering Debug", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(m_DisableRendering, m_DisableRenderingGUI);
+            EditorGUILayout.PropertyField(m_ColorClipmapLevels, m_ColorClipmapLevelsGUI);
 
             serializedObject.ApplyModifiedProperties();
         }

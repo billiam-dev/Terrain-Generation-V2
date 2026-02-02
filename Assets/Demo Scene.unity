@@ -449,7 +449,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 37c5e78ddc5b9cd4d87e75d5ea67129f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ProceduralTerrain
-  BrickmapDebugLevel: 0
+  BrickmapDebugLevel: 1
   EnableShapeVolumes: 0
   EnableLoadedBricks: 0
   EnableAllocatedBricks: 1
@@ -459,6 +459,7 @@ MonoBehaviour:
   DensitySamplerPosition: {x: -5.0985203, y: 36.03176, z: 47.455624}
   Material: {fileID: 2100000, guid: 8c0b7369761cd4d4ab23de439d710b69, type: 2}
   DisableRendering: 0
+  ColorClipmapLevels: 1
 --- !u!114 &337805764
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -645,7 +646,7 @@ MonoBehaviour:
   m_DistanceFunction: 0
   m_BlendMode: 0
   m_Smoothness: 1
-  m_Dimention1: 12
+  m_Dimention1: 8
   m_Dimention2: 1
   m_Dimention3: 4
 --- !u!1660057539 &9223372036854775807

@@ -15,10 +15,21 @@ namespace LevelGeneration.Terrain
 
 #if UNITY_EDITOR
         public bool DisableRendering;
+        public bool ColorClipmapLevels;
+
+        readonly Color[] m_ClipmapDebugHighlights = new Color[]
+        {
+                new(1.0f, 0.2f, 0.0f),
+                new(0.0f, 1.0f, 0.2f),
+                new(0.2f, 0.0f, 1.0f),
+                new(0.8f, 0.8f, 0.8f),
+                new(0.4f, 0.4f, 0.4f),
+                new(0.1f, 0.1f, 0.1f)
+        };
 #endif
 
         RenderingData m_RenderingData;
-        ChunkMesher m_ChunkMesher;
+        BatchChunkMesher m_ChunkMesher;
         ClipmapLevel[] m_Clipmaps;
 
         MaterialPropertyBlock m_MaterialProperties;
@@ -27,22 +38,22 @@ namespace LevelGeneration.Terrain
 
         void InitializeRendering()
         {
-            m_RenderingData = new()
-            {
-                brickmapLevels = m_DensityCache.GetRenderingData()
-            };
+            m_RenderingData.brickmapLevels = m_DensityCache.GetRenderingData();
 
-            m_ChunkMesher = new ChunkMesher();
-
+            m_ChunkMesher = new();
             m_Clipmaps = new ClipmapLevel[k_NumBrickMapLevels];
+            m_MaterialProperties = new();
+
             for (int i = 0; i < k_NumBrickMapLevels; i++)
                 m_Clipmaps[i] = new(k_BrickmapLevelSize, i);
 
-            m_MaterialProperties = new();
+            m_ChunkMesher.Allocate();
         }
 
         void CleanupRendering()
         {
+            m_ChunkMesher.Dispose();
+
             m_ChunkMesher = null;
             m_Clipmaps = null;
             m_MaterialProperties = null;
@@ -57,6 +68,16 @@ namespace LevelGeneration.Terrain
 
             foreach (ClipmapLevel clipmap in m_Clipmaps)
                 clipmap.Update(m_RenderingData, m_ChunkMesher, ref m_DebugInfo);
+
+            // TODO: mess
+            double t = 0;
+            Stopwatch.Start(ref t);
+
+            m_ChunkMesher.ExecutePendingTasksContinuous();
+
+            Stopwatch.End(ref t);
+
+            m_DebugInfo.meshingJobTimes.AddTime(t);
         }
 
         void RenderTerrain(ScriptableRenderContext context, Camera camera)
@@ -68,8 +89,17 @@ namespace LevelGeneration.Terrain
 
             m_DebugInfo.chunkRendererdThisFrame = 0;
 
-            foreach (ClipmapLevel clipmap in m_Clipmaps)
-                clipmap.Render(camera, Material, m_MaterialProperties, ref m_DebugInfo);
+            for (int i = 0; i < k_NumBrickMapLevels; i++)
+            {
+#if UNITY_EDITOR
+                if (ColorClipmapLevels)
+                    m_MaterialProperties.SetColor("_ClipmapDebugColor", m_ClipmapDebugHighlights[i]);
+                else
+#endif
+                    m_MaterialProperties.SetColor("_ClipmapDebugColor", Color.white);
+
+                m_Clipmaps[i].Render(camera, Material, m_MaterialProperties, ref m_DebugInfo);
+            }
         }
 
         class ClipmapLevel
@@ -106,27 +136,37 @@ namespace LevelGeneration.Terrain
                     meshUpToDate = false;
                 }
 
-                public void Update(RenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
+                public void Update(RenderingData renderingData, BatchChunkMesher mesher, ref TerrainDebugInfo debugInfo)
                 {
-                    if (!InViewFrustum(renderingData.OriginCamera))
+                    if (!InViewFrustum(renderingData.ObserverCamera))
                         return;
 
-                    BrickmapRenderingData brickMapRendering = renderingData.brickmapLevels[level];
+                    BrickmapRenderingData brickmapRenderingData = renderingData.brickmapLevels[level];
 
                     // Check if the density data within this chunk has changed and flag for remeshing if true.
-                    if (brickMapRendering.modifiedBricks.Contains(chunkIndex))
+                    if (brickmapRenderingData.modifiedBricks.Contains(chunkIndex))
                     {
-                        brickMapRendering.modifiedBricks.Remove(chunkIndex);
+                        brickmapRenderingData.modifiedBricks.Remove(chunkIndex);
                         meshUpToDate = false;
                     }
 
                     // Remesh if necessary.
                     if (!meshUpToDate)
                     {
-                        MeshingResult result = mesher.DoRemesh(mesh, transitionMeshes, renderingData.brickmapLevels[level].densitySampler, chunkIndex, k_BrickSize, k_WorldScale, level, k_TransitionCellPadding);
-                        meshUpToDate = true;
+                        mesher.QueueRemeshTask(
+                            new MeshingTask(
+                                mesh,
+                                transitionMeshes,
+                                chunkIndex,
+                                k_BrickSize,
+                                k_WorldScale,
+                                level,
+                                k_TransitionCellPadding,
+                                brickmapRenderingData.densitySampler
+                            )
+                        );
 
-                        debugInfo.meshingJobTimes.AddTime(result.ExecutionTime);
+                        meshUpToDate = true;
                     }
                 }
 
@@ -158,7 +198,7 @@ namespace LevelGeneration.Terrain
                 chunks = new(mapSize * mapSize * mapSize);
             }
 
-            public void Update(RenderingData renderingData, ChunkMesher mesher, ref TerrainDebugInfo debugInfo)
+            public void Update(RenderingData renderingData, BatchChunkMesher mesher, ref TerrainDebugInfo debugInfo)
             {
                 DensitySampler densitySampler = renderingData.brickmapLevels[level].densitySampler;
 
@@ -201,7 +241,7 @@ namespace LevelGeneration.Terrain
         struct RenderingData
         {
             public BrickmapRenderingData[] brickmapLevels;
-            public Camera OriginCamera;
+            public Camera ObserverCamera;
         }
 
         struct BrickmapRenderingData : IDisposable

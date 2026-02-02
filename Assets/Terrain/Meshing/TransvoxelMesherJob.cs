@@ -18,10 +18,11 @@ namespace LevelGeneration.Terrain.Meshing
         // Input terrain data
         [ReadOnly] public int clipmapLevel;         // The chunk's clipmap level (idx).
         [ReadOnly] public int3 chunkIndex;          // Index into the density brick map at this clipmap level.
-        [ReadOnly] public DensitySampler chunks;    // Terrain density data.
         [ReadOnly] public int chunkSize;            // Number of cells per axis in a density chunk.
         [ReadOnly] public float cellScale;          // World scale of a single cell, determines the scale of the entire terrain.
+        [ReadOnly] public float stepSize;           // TODO
         [ReadOnly] public float padding;            // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
+        [ReadOnly] public DensitySampler chunks;    // Terrain density data.
 
         // Output mesh data
         [NativeDisableParallelForRestriction]
@@ -64,6 +65,8 @@ namespace LevelGeneration.Terrain.Meshing
             }
             */
         }
+
+        #region Regular Cells
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void MarchRegularCell(int3 index, bool padForTransitions)
@@ -162,6 +165,59 @@ namespace LevelGeneration.Terrain.Meshing
             }
         }
 
+        ushort AddRegularVertex(int3 index, byte v0, byte v1, float t, bool padForTransitions)
+        {
+            // Compute edge indices.
+            int3 i0 = index + TransvoxelTables.CornerOffsets[v0];
+            int3 i1 = index + TransvoxelTables.CornerOffsets[v1];
+
+            // Make edge mask.
+            int edgeMask = 0;
+            if (padForTransitions)
+                edgeMask = MakeEdgeMask(i0, i1);
+
+            // Compute normals with adjacent samples.
+            float3 n0 = ComputeNormal(i0);
+            float3 n1 = ComputeNormal(i1);
+            float3 normal = math.normalize((t * n0) + ((1 - t) * n1));
+
+            // Compute primary position.
+            float3 adjustedOrigin = (stepSize - 1) * chunkSize * (float3)chunkIndex; // This adjusts for the density indexes not being scaled based on the clipmap level.
+            
+            float3 p0 = adjustedOrigin + (float3)i0 * stepSize;
+            float3 p1 = adjustedOrigin + (float3)i1 * stepSize;
+            float3 position = (t * p0) + ((1 - t) * p1);
+
+            // Compute secondary position.
+            float3 transitionDelta = GetTransitionDelta(edgeMask, position) * padding;
+            float3 sPosition = ReprojectPointWithNormal(position, transitionDelta, normal);
+
+            // Magnify by the cell scale.
+            position *= cellScale;
+            sPosition *= cellScale;
+
+            // Add vertex and return its index.
+            ushort vertexIndex = (ushort)vertices.Length;
+            vertices.Add(new Vertex(position, normal, sPosition, edgeMask));
+
+            return vertexIndex;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        readonly int3 CellOffsetFromEdgeCode(byte index)
+        {
+            int3 value;
+            value.z = -((index >> 2) & 1);
+            value.y = -((index >> 1) & 1);
+            value.x = -(index & 1);
+
+            return value;
+        }
+
+        #endregion
+
+        #region Transition Cells
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void MarchTransitionCell(int2 cellIndex, int chunkFaceIndex)
         {
@@ -257,45 +313,6 @@ namespace LevelGeneration.Terrain.Meshing
             }
         }
 
-        ushort AddRegularVertex(int3 index, byte v0, byte v1, float t, bool padForTransitions)
-        {
-            // Compute edge indices.
-            int3 i0 = index + TransvoxelTables.CornerOffsets[v0];
-            int3 i1 = index + TransvoxelTables.CornerOffsets[v1];
-
-            // Compute global edge indices.
-            int3 global_i0 = i0;
-            int3 global_i1 = i1;
-
-            int edgeMask = 0;
-            if (padForTransitions)
-                edgeMask = MakeEdgeMask(i0, i1);
-
-            // Compute normals with adjacent samples.
-            float3 n0 = ComputeNormal(global_i0);
-            float3 n1 = ComputeNormal(global_i1);
-            float3 normal = math.normalize((t * n0) + ((1 - t) * n1));
-
-            // Compute primary position.
-            float3 pos0 = (float3)global_i0;
-            float3 pos1 = (float3)global_i1;
-            float3 position = (t * pos0) + ((1 - t) * pos1);
-
-            // Compute secondary position.
-            float3 delta = GetTransitionDelta(edgeMask, position) * padding;
-            float3 sPosition = ReprojectPointWithNormal(position, delta, normal);
-
-            // Magnify by the voxel scale.
-            position *= cellScale;
-            sPosition *= cellScale;
-
-            // Add vertex and return its index.
-            ushort vertexIndex = (ushort)vertices.Length;
-            vertices.Add(new Vertex(position, normal, sPosition, edgeMask));
-
-            return vertexIndex;
-        }
-
         ushort AddTransitionVertex(int3 index, byte v0, byte v1, float t, int chunkFaceIndex)
         {
             // Compute global edge indices.
@@ -377,36 +394,6 @@ namespace LevelGeneration.Terrain.Meshing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly float3 ReprojectPointWithNormal(float3 p, float3 o, float3 n)
-        {
-            // Reproject position with offset along normal (p47, Equation 4.3).
-
-            float a = -n.x * n.y;
-            float b = -n.z * n.x;
-            float c = -n.y * n.z;
-
-            float3 n2 = 1.0f - math.square(n);
-
-            float3 newPoint;
-            newPoint.x = p.x + (n2.x * o.x) + (a * o.y) + (b * o.z);
-            newPoint.y = p.y + (a * o.x) + (n2.y * o.y) + (c * o.z);
-            newPoint.z = p.z + (b * o.x) + (c * o.y) + (n2.z * o.z);
-
-            return newPoint;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly int3 CellOffsetFromEdgeCode(byte index)
-        {
-            int3 value;
-            value.z = -((index >> 2) & 1);
-            value.y = -((index >> 1) & 1);
-            value.x = -(index & 1);
-
-            return value;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly int2 TransitionCellOffsetFromEdgeCode(byte idx, int transitionIndex)
         {
             // So this is from transvoxel and not even the guy who make it has any clue what's going on?
@@ -430,6 +417,10 @@ namespace LevelGeneration.Terrain.Meshing
             return value;
         }
 
+        #endregion
+
+        #region Utility
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly float3 ComputeNormal(int3 coord)
         {
@@ -438,6 +429,25 @@ namespace LevelGeneration.Terrain.Meshing
             normal.y = SampleDensity(coord - Axis.up) - SampleDensity(coord + Axis.up);
             normal.z = SampleDensity(coord - Axis.forward) - SampleDensity(coord + Axis.forward);
             return normal;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        readonly float3 ReprojectPointWithNormal(float3 p, float3 o, float3 n)
+        {
+            // Reproject position with offset along normal (p47, Equation 4.3).
+
+            float a = -n.x * n.y;
+            float b = -n.z * n.x;
+            float c = -n.y * n.z;
+
+            float3 n2 = 1.0f - math.square(n);
+
+            float3 newPoint;
+            newPoint.x = p.x + (n2.x * o.x) + (a * o.y) + (b * o.z);
+            newPoint.y = p.y + (a * o.x) + (n2.y * o.y) + (c * o.z);
+            newPoint.z = p.z + (b * o.x) + (c * o.y) + (n2.z * o.z);
+
+            return newPoint;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -452,7 +462,11 @@ namespace LevelGeneration.Terrain.Meshing
         {
             return (index.z * size * size) + (index.y * size) + index.x;
         }
+
+        #endregion
     }
+
+    #region Helper Objects
 
     readonly struct Axis
     {
@@ -747,6 +761,10 @@ namespace LevelGeneration.Terrain.Meshing
             return GetEnumerator();
         }
     }
+
+    #endregion
+
+    #region Tables
 
     readonly struct TransvoxelTables
     {
@@ -1713,4 +1731,6 @@ namespace LevelGeneration.Terrain.Meshing
             new ushort[] {}
         };
     }
+
+    #endregion
 }
