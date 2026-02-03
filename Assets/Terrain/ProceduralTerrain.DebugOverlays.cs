@@ -23,8 +23,8 @@ namespace LevelGeneration.Terrain
             Gizmos.matrix = Matrix4x4.identity;
 
             if (EnableShapeVolumes) m_DensityCache.DrawShapeVolumeIndices(BrickmapDebugLevel, m_Scene);
-            if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks(BrickmapDebugLevel);
-            if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks(BrickmapDebugLevel);
+            if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks();
+            if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks();
             if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelsBounds(m_ObserverPosition);
         }
 
@@ -72,7 +72,7 @@ namespace LevelGeneration.Terrain
                     Gizmos.color = new Color(1.0f, 0.1f, 0.0f, 0.1f);
                     foreach (int3 brickIndex in bricksInShapeVolumes)
                     {
-                        float3 worldBrickSize = brickSize * brickScale * worldScale;
+                        float3 worldBrickSize = brickSize * levelScale * worldScale;
 
                         float3 brickCorner = worldBrickSize * brickIndex;
                         float3 bricksCentre = brickCorner + (worldBrickSize / 2.0f);
@@ -85,7 +85,7 @@ namespace LevelGeneration.Terrain
                 {
                     int3 originIndex = GetOriginIndex(observerPosition);
 
-                    float3 worldBrickSize = brickSize * brickScale * worldScale;
+                    float3 worldBrickSize = brickSize * levelScale * worldScale;
 
                     float3 brickmapLevelCentre = worldBrickSize * originIndex;
                     float3 brickMapLevelSize = mapSize * worldBrickSize;
@@ -123,7 +123,7 @@ namespace LevelGeneration.Terrain
 
                 void DrawBrick(int3 brickIndex, Camera camera, float alphaMultiplier = 1.0f)
                 {
-                    float3 worldBrickSize = brickSize * brickScale * worldScale;
+                    float3 worldBrickSize = brickSize * levelScale * worldScale;
 
                     float3 brickCorner = worldBrickSize * brickIndex;
                     float3 brickCentre = brickCorner + (worldBrickSize / 2.0f);
@@ -159,16 +159,20 @@ namespace LevelGeneration.Terrain
                     brickMapLevels[i].DrawBounds(observerPosition, k_BrickmapLevelDebugColors[i]);
             }
 
-            public void DrawLoadedBricks(int levelIndex)
+            public void DrawLoadedBricks()
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
-                brickMapLevels[levelIndex].DrawLoadedBricks(sceneCamera);
+
+                for (int i = 0; i < brickMapLevels.Length; i++)
+                    brickMapLevels[i].DrawLoadedBricks(sceneCamera);
             }
 
-            public void DrawAllocatedBricks(int levelIndex)
+            public void DrawAllocatedBricks()
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
-                brickMapLevels[levelIndex].DrawAllocatedBricks(sceneCamera);
+
+                for (int i = 0; i < brickMapLevels.Length; i++)
+                    brickMapLevels[i].DrawAllocatedBricks(sceneCamera);
             }
         }
     }

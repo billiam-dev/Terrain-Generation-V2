@@ -9,37 +9,37 @@ namespace LevelGeneration.Terrain
 {
     public class DensityEvaluator : IDisposable
     {
-        NativeArray<float> workingDensityData;
-        NativeReference<bool> positiveValueFound;
-        NativeReference<bool> negativeValueFound;
+        NativeArray<float> m_WorkingDensityData;
+        NativeReference<bool> m_PositiveValueFound;
+        NativeReference<bool> m_NegativeValueFound;
 
-        double executionTime;
+        double m_ExecutionTime;
 
         const int k_InnerloopBatchCount = 32;
 
         public void Allocate(int brickSize)
         {
-            workingDensityData = new(brickSize * brickSize * brickSize, Allocator.Persistent);
-            positiveValueFound = new(Allocator.Persistent);
-            negativeValueFound = new(Allocator.Persistent);
+            m_WorkingDensityData = new(brickSize * brickSize * brickSize, Allocator.Persistent);
+            m_PositiveValueFound = new(Allocator.Persistent);
+            m_NegativeValueFound = new(Allocator.Persistent);
         }
 
         public void Dispose()
         {
-            workingDensityData.Dispose();
-            positiveValueFound.Dispose();
-            negativeValueFound.Dispose();
+            m_WorkingDensityData.Dispose();
+            m_PositiveValueFound.Dispose();
+            m_NegativeValueFound.Dispose();
         }
 
-        public DensityEvaluationResult ExecuteJob(NativeList<Shape> shapes, int3 brickIndex, int brickSize, int brickMapLevel, float terrainScale)
+        public DensityEvaluationResult ExecuteJob(NativeList<Shape> shapes, int3 brickIndex, int brickSize, float terrainScale, int levelScale)
         {
             // Brick has to evaluate adjacent values to know whether it needs to be allocated or not.
             // This is because the mesher requires an extra point to match the bricks pointsPerAxis in cells, and also another on all sides for normal computation.
             // By implementing a more strict check for density allocated, bricks are only allocated when absolutly necessary as opposed to simply always allocating bricks next to !isEmpty && !isFull bricks.
             int extendedBrickSize = brickSize + 3;
 
-            positiveValueFound.Value = false;
-            negativeValueFound.Value = false;
+            m_PositiveValueFound.Value = false;
+            m_NegativeValueFound.Value = false;
 
             DensityJob job = new()
             {
@@ -48,21 +48,21 @@ namespace LevelGeneration.Terrain
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 extendedBrickSize = extendedBrickSize,
-                stepSize = (int)math.pow(2, brickMapLevel),
                 terrainScale = terrainScale,
-                density = workingDensityData,
-                positiveValueFound = positiveValueFound,
-                negativeValueFound = negativeValueFound
+                levelScale = levelScale,
+                density = m_WorkingDensityData,
+                positiveValueFound = m_PositiveValueFound,
+                negativeValueFound = m_NegativeValueFound
             };
 
-            Stopwatch.Start(ref executionTime);
+            Stopwatch.Start(ref m_ExecutionTime);
             job.ScheduleParallel(extendedBrickSize * extendedBrickSize * extendedBrickSize, k_InnerloopBatchCount, default).Complete();
-            Stopwatch.End(ref executionTime);
+            Stopwatch.End(ref m_ExecutionTime);
 
-            bool isEmpty = positiveValueFound.Value && !negativeValueFound.Value;
-            bool isFull = negativeValueFound.Value && !positiveValueFound.Value;
+            bool isEmpty = m_PositiveValueFound.Value && !m_NegativeValueFound.Value;
+            bool isFull = m_NegativeValueFound.Value && !m_PositiveValueFound.Value;
 
-            return new DensityEvaluationResult(workingDensityData, isEmpty, isFull, executionTime);
+            return new DensityEvaluationResult(m_WorkingDensityData, isEmpty, isFull, m_ExecutionTime);
         }
 
         [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
@@ -73,8 +73,8 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
             [ReadOnly] public int extendedBrickSize;
-            [ReadOnly] public int stepSize;
             [ReadOnly] public float terrainScale;
+            [ReadOnly] public int levelScale;
 
             [WriteOnly, NativeDisableParallelForRestriction]
             public NativeArray<float> density;
@@ -102,7 +102,7 @@ namespace LevelGeneration.Terrain
                 int3 cellIndex = extendedCellIndex - 2;
 
                 // Derrive world position from iteration index.
-                int3 globalCellIndex = (brickIndex * brickSize * stepSize) + (cellIndex * stepSize);
+                int3 globalCellIndex = ((brickIndex * brickSize) + cellIndex) * levelScale;
                 float3 worldPosition = (float3)globalCellIndex * terrainScale;
 
                 // Apply shapes.

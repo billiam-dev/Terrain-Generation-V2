@@ -4,7 +4,9 @@ using UnityEngine;
 
 namespace LevelGeneration.Terrain.DevTools
 {
-    [ExecuteInEditMode]
+    /// <summary>
+    /// Demonstration object. Visualy shows how clipmap levels dynamically shift to a given origin.
+    /// </summary>
     public class ClipmapDemo : MonoBehaviour
     {
         [SerializeField, Range(1, k_MaxClipmapLevels)]
@@ -26,18 +28,11 @@ namespace LevelGeneration.Terrain.DevTools
 
         int3[] m_ClipmapLevelOrigins;
 
-        void OnEnable()
-        {
-            m_ClipmapLevelOrigins = new int3[k_MaxClipmapLevels];
-        }
-
-        void OnDisable()
-        {
-            m_ClipmapLevelOrigins = null;
-        }
-
         void OnDrawGizmos()
         {
+            if (m_ClipmapLevelOrigins == null || m_ClipmapLevelOrigins.Length != k_MaxClipmapLevels)
+                m_ClipmapLevelOrigins = new int3[k_MaxClipmapLevels];
+
             Gizmos.matrix = Matrix4x4.identity;
 
             for (int i = 0; i < m_NumClipmapLevels; i++)
@@ -107,7 +102,7 @@ namespace LevelGeneration.Terrain.DevTools
                             offsetIndex.x >= lowerGridpublicOffset.x - quarterClipmapSize)
                         {
                             if (offsetIndex.y < lowerGridpublicOffset.y + quarterClipmapSize &&
-                            offsetIndex.y >= lowerGridpublicOffset.y - quarterClipmapSize)
+                                offsetIndex.y >= lowerGridpublicOffset.y - quarterClipmapSize)
                             {
                                 continue;
                             }

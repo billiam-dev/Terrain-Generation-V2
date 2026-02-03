@@ -38,7 +38,7 @@ namespace LevelGeneration.Terrain
                     Handles.Label(position + offset, infoStr);
 
                     // Draw cell.
-                    float worldCellSize = brickScale * worldScale;
+                    float worldCellSize = levelScale * worldScale;
                     float3 cellCorner = (float3)globalCellIndex * worldCellSize;
                     float3 cellCentre = cellCorner + (worldCellSize / 2.0f);
 

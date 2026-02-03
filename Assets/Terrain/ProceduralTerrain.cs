@@ -246,12 +246,12 @@ namespace LevelGeneration.Terrain
 
                 readonly int mapSize;              // Number of bricks per axis contained in this brick map.
                 readonly int brickSize;            // Number of points per axis contained in a single brick.
-                readonly int level;                // The level index if this brick map. Higher levels work with larger bricks at greater distances from the view origin.
                 readonly float worldScale;         // The world scale of this brick map.
-
-                readonly int brickScale;           // The scale multiplier of all bricks at this brickmap level.
-                readonly float worldBrickSize;     // The size of a single brick in world units.
+                readonly int level;                // The level index if this brick map. Higher levels work with larger bricks at greater distances from the view origin
+                
                 readonly int halfMapSize;          // Half the number of bricks per axis contained in this brick map.
+                readonly int quarterMapSize;       // Quarter the number of bricks per axis contained in this brick map.
+                readonly int levelScale;           // The scale multiplier relative to the smallest brickmap level, derrived from the level index with the equation (2 ^ level).
 
                 readonly BrickmapRenderingData renderingData;
                 readonly Dictionary<int3, Brick> bricks;
@@ -259,21 +259,22 @@ namespace LevelGeneration.Terrain
 
                 int numBricksAllocated;
                 int3 originIndex;
+                int3 lowerOriginIndex;
 
                 public BrickmapRenderingData RenderingData => renderingData;
 
                 public int3 LocalOriginIndex => originIndex;
 
-                public SparseBrickMap(int mapSize, int brickSize, int level, float worldScale)
+                public SparseBrickMap(int mapSize, int brickSize, float worldScale, int level)
                 {
                     this.mapSize = mapSize;
                     this.brickSize = brickSize;
-                    this.level = level;
                     this.worldScale = worldScale;
+                    this.level = level;
 
-                    brickScale = (int)math.pow(2, level);
-                    worldBrickSize = brickScale * brickSize * worldScale;
                     halfMapSize = mapSize / 2;
+                    quarterMapSize = mapSize / 4;
+                    levelScale = (int)math.pow(2, level);
 
                     renderingData = new();
                     renderingData.Allocate(brickSize);
@@ -293,29 +294,36 @@ namespace LevelGeneration.Terrain
                     renderingData.Dispose();
                 }
 
-                public void Update(float3 observerPosition, SDFScene scene, DensityEvaluator densityEvaluator, ref TerrainDebugInfo debugInfo)
+                public void Update(float3 observerPosition, int3 lowerGridOriginIndex, SDFScene scene, DensityEvaluator densityEvaluator, ref TerrainDebugInfo debugInfo)
                 {
                     // Calculate the brick index in which the observer is located (local within this brickmap level).
                     int3 newOriginIndex = GetOriginIndex(observerPosition);
 
+                    int3 newLowerOriginIndex = 0;
+                    if (level > 0)
+                        newLowerOriginIndex = (lowerGridOriginIndex - newOriginIndex - newOriginIndex) / 2;
+
                     // If the origin index is different this frame; update loaded bricks.
-                    if (math.any(newOriginIndex != originIndex))
+                    if (math.any(newOriginIndex != originIndex) || math.any(newLowerOriginIndex != lowerOriginIndex))
                     {
-                        // Save the new orogin index and update the brickmap.
+                        // Save new origin indices.
                         originIndex = newOriginIndex;
+                        lowerOriginIndex = newLowerOriginIndex;
+
+                        // Copy brick map keys.
+                        int3[] bricksCopy = new int3[bricks.Keys.Count];
+                        bricks.Keys.CopyTo(bricksCopy, 0);
 
                         // Remove out of bounds entries (loop through existing entries).
-                        int3[] loadedBricks = new int3[bricks.Keys.Count];
-                        bricks.Keys.CopyTo(loadedBricks, 0);
-
-                        foreach (int3 brickIndex in loadedBricks)
+                        foreach (int3 brickIndex in bricksCopy)
                         {
-                            if (!BrickInBounds(brickIndex))
+                            if (!BrickInBounds(brickIndex) || BrickOverlapsPreviousLevel(brickIndex))
                             {
+                                // Ensure density data for brick is disposed and remove from map.
                                 EnsureBrickDisposed(brickIndex);
-                                
                                 bricks.Remove(brickIndex);
                                 
+                                // Unload brick in rendering data and remove from modified bricks if necessary.
                                 renderingData.densitySampler.UnloadBrick(brickIndex);
                                 if (renderingData.modifiedBricks.Contains(brickIndex))
                                     renderingData.modifiedBricks.Remove(brickIndex);
@@ -329,14 +337,20 @@ namespace LevelGeneration.Terrain
                             {
                                 for (int z = 0; z < mapSize; z++)
                                 {
+                                    // Find the index position of this brick, using the origin index calculated from the observer position.
                                     int3 brickIndex = newOriginIndex + new int3(x, y, z) - halfMapSize;
 
-                                    if (!bricks.ContainsKey(brickIndex))
+                                    if (!bricks.ContainsKey(brickIndex) && !BrickOverlapsPreviousLevel(brickIndex))
                                     {
+                                        // Add brick to map.
                                         bricks.Add(brickIndex, new Brick());
-                                        renderingData.densitySampler.LoadBrick(brickIndex);
 
-                                        EvaluateDensity(brickIndex, scene, worldScale, densityEvaluator, ref debugInfo);
+                                        // Mark brick as modified.
+                                        if (!modifiedBricks.Contains(brickIndex))
+                                            modifiedBricks.Add(brickIndex);
+
+                                        // Load brick into rendering data.
+                                        renderingData.densitySampler.LoadBrick(brickIndex);
                                     }
                                 }
                             }
@@ -353,7 +367,7 @@ namespace LevelGeneration.Terrain
                         foreach (int3 brickIndex in modifiedBricks)
                         {
                             if (bricks.ContainsKey(brickIndex))
-                                EvaluateDensity(brickIndex, scene, worldScale, densityEvaluator, ref debugInfo);
+                                EvaluateDensity(brickIndex, scene, densityEvaluator, ref debugInfo);
                         }
 
                         Stopwatch.End(ref debugInfo.recomputationTime);
@@ -363,6 +377,28 @@ namespace LevelGeneration.Terrain
 
                     debugInfo.numBricksLoaded = bricks.Count;
                     debugInfo.numBricksAllocated = numBricksAllocated;
+                }
+
+                void EvaluateDensity(int3 brickIndex, SDFScene scene, DensityEvaluator densityEvaluator, ref TerrainDebugInfo debugInfo)
+                {
+                    // TODO: only execute job with intersecting shapes!!
+
+                    DensityEvaluationResult result = densityEvaluator.ExecuteJob(scene.Shapes, brickIndex, brickSize, worldScale, levelScale);
+
+                    bricks[brickIndex].SetState(result.DensityState);
+                    renderingData.densitySampler.SetBrickState(brickIndex, result.DensityState);
+
+                    if (result.IntersectsSurface)
+                    {
+                        EnsureBrickAllocated(brickIndex);
+                        bricks[brickIndex].CopyDenstiy(result.Density);
+                    }
+                    else
+                    {
+                        EnsureBrickDisposed(brickIndex);
+                    }
+
+                    debugInfo.densityJobTimes.AddTime(result.ExecutionTime);
                 }
 
                 public void DeallocateAll()
@@ -406,6 +442,8 @@ namespace LevelGeneration.Terrain
                 {
                     ComputeIndices(boundsCentre, out _, out int3 brickIndex, out int3 localCellIndex);
 
+                    float3 worldBrickSize = brickSize * levelScale * worldScale;
+
                     // Snap the volume to the brick grid and output the result.
                     volume = (int3)math.ceil(boundsVolume.xyz / worldBrickSize) + 1;
 
@@ -437,7 +475,7 @@ namespace LevelGeneration.Terrain
                 void ComputeIndices(float3 positionWS, out int3 globalCellIndex, out int3 brickIndex, out int3 localCellIndex)
                 {
                     // Scale position by inverse terrain scale.
-                    positionWS *= 1.0f / (brickScale * worldScale);
+                    positionWS *= 1.0f / (levelScale * worldScale);
 
                     // Output the global cell index of the position.
                     globalCellIndex = (int3)math.floor(positionWS);
@@ -447,28 +485,6 @@ namespace LevelGeneration.Terrain
 
                     // Ouput the cells index within it's encompassing brick.
                     localCellIndex = globalCellIndex - (brickIndex * brickSize);
-                }
-
-                void EvaluateDensity(int3 brickIndex, SDFScene scene, float terrainScale, DensityEvaluator densityEvaluator, ref TerrainDebugInfo debugInfo)
-                {
-                    // TODO: only execute job with intersecting shapes!!
-
-                    DensityEvaluationResult result = densityEvaluator.ExecuteJob(scene.Shapes, brickIndex, brickSize, level, terrainScale);
-
-                    bricks[brickIndex].SetState(result.DensityState);
-                    renderingData.densitySampler.SetBrickState(brickIndex, result.DensityState);
-
-                    if (result.IntersectsSurface)
-                    {
-                        EnsureBrickAllocated(brickIndex);
-                        bricks[brickIndex].CopyDenstiy(result.Density);
-                    }
-                    else
-                    {
-                        EnsureBrickDisposed(brickIndex);
-                    }
-
-                    debugInfo.densityJobTimes.AddTime(result.ExecutionTime);
                 }
 
                 void EnsureBrickAllocated(int3 brickIndex)
@@ -507,23 +523,46 @@ namespace LevelGeneration.Terrain
                     observerPosition *= 1.0f / worldScale;
 
                     // Compute position on upper grid level.
-                    float3 upperGridPosition = (observerPosition + brickSize) / math.pow(2, level + 1);
+                    float3 upperGridPosition = (observerPosition + (brickSize * levelScale)) / math.pow(2, level + 1) / brickSize;
 
-                    // Floor position and multiply by 2 to restore to this grid level.
-                    return (int3)math.floor(upperGridPosition / brickSize) * 2;
+                    // Floor position and multiply by 2 to restore index to this grid level.
+                    return (int3)math.floor(upperGridPosition) * 2;
                 }
 
                 bool BrickInBounds(int3 brickIndex) => math.all(brickIndex < originIndex + halfMapSize) && math.all(brickIndex >= originIndex - halfMapSize);
 
+                bool BrickOverlapsPreviousLevel(int3 brickIndex)
+                {
+                    if (level == 0)
+                        return false;
+
+                    if (brickIndex.x < lowerOriginIndex.x + quarterMapSize &&
+                        brickIndex.x >= lowerOriginIndex.x - quarterMapSize)
+                    {
+                        if (brickIndex.y < lowerOriginIndex.y + quarterMapSize &&
+                            brickIndex.y >= lowerOriginIndex.y - quarterMapSize)
+                        {
+                            if (brickIndex.z < lowerOriginIndex.z + quarterMapSize &&
+                                brickIndex.z >= lowerOriginIndex.z - quarterMapSize)
+                            {
+                                return true;
+                            }
+                        }
+                    }
+
+                    return false;
+                }
+
                 public float SampleDensityCache(int3 brickIndex, int3 cellIndex)
                 {
-                    // If brick is not loaded, return empty.
+                    // If brick is not loaded, return empty value (air).
                     if (!bricks.ContainsKey(brickIndex))
                         return k_EmptyDensityValue;
 
                     // Flatten cell position to 1d density index.
                     int densityIndex = (cellIndex.z * brickSize * brickSize) + (cellIndex.y * brickSize) + cellIndex.x;
 
+                    // Sample the given brick at that index.
                     return bricks[brickIndex].Sample(densityIndex);
                 }
             }
@@ -542,7 +581,7 @@ namespace LevelGeneration.Terrain
                 brickMapLevels = new SparseBrickMap[this.numLevels];
 
                 for (int i = 0; i < this.numLevels; i++)
-                    brickMapLevels[i] = new(mapLevelSize, brickSize, i, worldScale);
+                    brickMapLevels[i] = new(mapLevelSize, brickSize, worldScale, i);
 
                 densityEvaluator = new();
             }
@@ -562,8 +601,10 @@ namespace LevelGeneration.Terrain
 
             public void Update(float3 observerPosition, SDFScene scene, ref TerrainDebugInfo debugInfo)
             {
-                foreach (SparseBrickMap brickMap in brickMapLevels)
-                    brickMap.Update(observerPosition, scene, densityEvaluator, ref debugInfo);
+                brickMapLevels[0].Update(observerPosition, 0, scene, densityEvaluator, ref debugInfo);
+
+                for (int i = 1; i < numLevels; i++)
+                    brickMapLevels[i].Update(observerPosition, brickMapLevels[i - 1].LocalOriginIndex, scene, densityEvaluator, ref debugInfo);
             }
 
             public void MarkBoundsAsModified(float3 boundsCentre, float3 boundsVolume)
