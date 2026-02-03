@@ -22,7 +22,7 @@ namespace LevelGeneration.Terrain
         const float k_WorldScale = 1.0f;      // The size of a single cell in world units, effectively controls the scale of the whole terrain.
         const int k_BrickSize = 16;           // The number of cells per axis contained in a single brick.
         const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level.
-        const int k_NumBrickMapLevels = 2;    // The number of brickmap levels, each doubling the grid size of the previous level.
+        const int k_NumBrickMapLevels = 3;    // The number of brickmap levels, each doubling the grid size of the previous level.
 
         public static readonly float k_EmptyDensityValue = 32.0f;
         public static readonly float k_FullDensityValue = -32.0f;
@@ -115,10 +115,14 @@ namespace LevelGeneration.Terrain
 #endif
 
             // Update the density cache based on the observer position and shape updates.
+            Stopwatch.Start(ref m_DebugInfo.brickmapUpdateTime);
             m_DensityCache.Update(m_ObserverPosition, m_Scene, ref m_DebugInfo);
+            Stopwatch.End(ref m_DebugInfo.brickmapUpdateTime);
 
             // Update the clipmap meshes using the density cache.
+            Stopwatch.Start(ref m_DebugInfo.clipmapUpdateTime);
             UpdateClipmap();
+            Stopwatch.End(ref m_DebugInfo.clipmapUpdateTime);
         }
 
         /// <summary>
@@ -247,7 +251,6 @@ namespace LevelGeneration.Terrain
 
                 readonly int brickScale;           // The scale multiplier of all bricks at this brickmap level.
                 readonly float worldBrickSize;     // The size of a single brick in world units.
-                readonly float halfWorldBrickSize; // Half the size of a single brick in world units.
                 readonly int halfMapSize;          // Half the number of bricks per axis contained in this brick map.
 
                 readonly BrickmapRenderingData renderingData;
@@ -257,6 +260,10 @@ namespace LevelGeneration.Terrain
                 int numBricksAllocated;
                 int3 originIndex;
 
+                public BrickmapRenderingData RenderingData => renderingData;
+
+                public int3 LocalOriginIndex => originIndex;
+
                 public SparseBrickMap(int mapSize, int brickSize, int level, float worldScale)
                 {
                     this.mapSize = mapSize;
@@ -265,8 +272,7 @@ namespace LevelGeneration.Terrain
                     this.worldScale = worldScale;
 
                     brickScale = (int)math.pow(2, level);
-                    worldBrickSize = brickSize * brickScale * worldScale;
-                    halfWorldBrickSize = worldBrickSize / 2.0f;
+                    worldBrickSize = brickScale * brickSize * worldScale;
                     halfMapSize = mapSize / 2;
 
                     renderingData = new();
@@ -289,12 +295,10 @@ namespace LevelGeneration.Terrain
 
                 public void Update(float3 observerPosition, SDFScene scene, DensityEvaluator densityEvaluator, ref TerrainDebugInfo debugInfo)
                 {
-                    Stopwatch.Start(ref debugInfo.brickmapUpdateTime);
-
-                    // Calculate which brick index the observer is located at this brickmap level.
+                    // Calculate the brick index in which the observer is located (local within this brickmap level).
                     int3 newOriginIndex = GetOriginIndex(observerPosition);
 
-                    // If the origin index is different this frame...
+                    // If the origin index is different this frame; update loaded bricks.
                     if (math.any(newOriginIndex != originIndex))
                     {
                         // Save the new orogin index and update the brickmap.
@@ -357,8 +361,6 @@ namespace LevelGeneration.Terrain
                         modifiedBricks.Clear();
                     }
 
-                    Stopwatch.End(ref debugInfo.brickmapUpdateTime);
-
                     debugInfo.numBricksLoaded = bricks.Count;
                     debugInfo.numBricksAllocated = numBricksAllocated;
                 }
@@ -411,19 +413,20 @@ namespace LevelGeneration.Terrain
                     int3 centreIndex = brickIndex;
 
                     // For even volumes, the centre must be offset by +1 when the volume's local centre within the brick is on the positive half.
+                    int halfBrickSize = brickSize / 2;
                     if (volume.x % 2 == 0)
                     {
-                        if (localCellIndex.x >= halfWorldBrickSize)
+                        if (localCellIndex.x >= halfBrickSize)
                             centreIndex.x++;
                     }
                     if (volume.y % 2 == 0)
                     {
-                        if (localCellIndex.y >= halfWorldBrickSize)
+                        if (localCellIndex.y >= halfBrickSize)
                             centreIndex.y++;
                     }
                     if (volume.z % 2 == 0)
                     {
-                        if (localCellIndex.z >= halfWorldBrickSize)
+                        if (localCellIndex.z >= halfBrickSize)
                             centreIndex.z++;
                     }
 
@@ -496,15 +499,18 @@ namespace LevelGeneration.Terrain
 
                 int3 GetOriginIndex(float3 observerPosition)
                 {
-                    // Scale the observer position by the inverse terrain scale.
+                    // See ClipmapDemo.cs for explanation of this function.
+                    // Essentially, the brick index is calculated on the above grid level and then remapped to this grid level.
+                    // This prevents bricks from ever partially overlapping, which cannot be meshed.
+
+                    // Scale the observer position by the world scale.
                     observerPosition *= 1.0f / worldScale;
 
-                    // Offset the observer position by half the brick size in world units so that
-                    // it uses the halfway point within the brick as the boundary for shifting the
-                    // origin index, rather than the corner of the brick.
-                    observerPosition += halfWorldBrickSize;
+                    // Compute position on upper grid level.
+                    float3 upperGridPosition = (observerPosition + brickSize) / math.pow(2, level + 1);
 
-                    return (int3)math.floor(observerPosition / worldBrickSize);
+                    // Floor position and multiply by 2 to restore to this grid level.
+                    return (int3)math.floor(upperGridPosition / brickSize) * 2;
                 }
 
                 bool BrickInBounds(int3 brickIndex) => math.all(brickIndex < originIndex + halfMapSize) && math.all(brickIndex >= originIndex - halfMapSize);
@@ -520,8 +526,6 @@ namespace LevelGeneration.Terrain
 
                     return bricks[brickIndex].Sample(densityIndex);
                 }
-
-                public BrickmapRenderingData GetRenderingData() => renderingData;
             }
 
             readonly SparseBrickMap[] brickMapLevels;
@@ -586,7 +590,7 @@ namespace LevelGeneration.Terrain
             {
                 BrickmapRenderingData[] brickMapRenderingDatas = new BrickmapRenderingData[numLevels];
                 for (int i = 0; i < numLevels; i++)
-                    brickMapRenderingDatas[i] = brickMapLevels[i].GetRenderingData();
+                    brickMapRenderingDatas[i] = brickMapLevels[i].RenderingData;
 
                 return brickMapRenderingDatas;
             }

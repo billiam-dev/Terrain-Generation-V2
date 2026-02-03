@@ -119,56 +119,6 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &160539161
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 160539162}
-  - component: {fileID: 160539163}
-  m_Layer: 0
-  m_Name: Sphere 2
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &160539162
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 160539161}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 24}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 337805762}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &160539163
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 160539161}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 186d5fe9c10811a4cb84fbc097c42a9e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapeBrush
-  m_DistanceFunction: 0
-  m_BlendMode: 0
-  m_Smoothness: 1
-  m_Dimention1: 4
-  m_Dimention2: 1
-  m_Dimention3: 4
 --- !u!1 &231485490
 GameObject:
   m_ObjectHideFlags: 0
@@ -225,7 +175,7 @@ GameObject:
   - component: {fileID: 234978489}
   - component: {fileID: 234978490}
   m_Layer: 0
-  m_Name: Sphere 3
+  m_Name: Sphere 2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -350,13 +300,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0, y: 0.13398618, z: -0, w: -0.9909832}
   m_LocalPosition: {x: 0, y: 0, z: -45}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 344.6, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -433,8 +383,9 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 754368154}
-  - {fileID: 160539162}
   - {fileID: 234978489}
+  - {fileID: 384109221}
+  - {fileID: 1459879691}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &337805763
@@ -449,14 +400,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 37c5e78ddc5b9cd4d87e75d5ea67129f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ProceduralTerrain
-  BrickmapDebugLevel: 1
-  EnableShapeVolumes: 0
-  EnableLoadedBricks: 0
+  BrickmapDebugLevel: 0
+  EnableLoadedBricks: 1
   EnableAllocatedBricks: 1
+  EnableShapeVolumes: 0
   EnableBrickMapBorders: 1
   DetachCamera: 1
   EnableDensitySampler: 0
-  DensitySamplerPosition: {x: -5.0985203, y: 36.03176, z: 47.455624}
+  DensitySamplerPosition: {x: -5.0985203, y: 8.392872, z: -50.19342}
   Material: {fileID: 2100000, guid: 8c0b7369761cd4d4ab23de439d710b69, type: 2}
   DisableRendering: 0
   ColorClipmapLevels: 1
@@ -472,6 +423,56 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 09395c713a0ecbc4da9d4bc428c362ee, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapePainter.ShapePainter
+--- !u!1 &384109220
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 384109221}
+  - component: {fileID: 384109222}
+  m_Layer: 0
+  m_Name: Sphere 3
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &384109221
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 384109220}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: -190}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 337805762}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &384109222
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 384109220}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 186d5fe9c10811a4cb84fbc097c42a9e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapeBrush
+  m_DistanceFunction: 0
+  m_BlendMode: 0
+  m_Smoothness: 1
+  m_Dimention1: 12
+  m_Dimention2: 1
+  m_Dimention3: 4
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -646,7 +647,114 @@ MonoBehaviour:
   m_DistanceFunction: 0
   m_BlendMode: 0
   m_Smoothness: 1
-  m_Dimention1: 8
+  m_Dimention1: 12
+  m_Dimention2: 1
+  m_Dimention3: 4
+--- !u!1001 &1103205056
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 2793657211722933812, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_Name
+      value: Human Scale Reference
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 14
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
+--- !u!1 &1459879690
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1459879691}
+  - component: {fileID: 1459879692}
+  m_Layer: 0
+  m_Name: Sphere 4
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1459879691
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1459879690}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: -176.5}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 337805762}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1459879692
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1459879690}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 186d5fe9c10811a4cb84fbc097c42a9e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapeBrush
+  m_DistanceFunction: 0
+  m_BlendMode: 0
+  m_Smoothness: 1
+  m_Dimention1: 5.610096
   m_Dimention2: 1
   m_Dimention3: 4
 --- !u!1660057539 &9223372036854775807
@@ -657,3 +765,4 @@ SceneRoots:
   - {fileID: 410087041}
   - {fileID: 337805762}
   - {fileID: 231485491}
+  - {fileID: 1103205056}

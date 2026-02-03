@@ -17,7 +17,7 @@ namespace LevelGeneration.Terrain
         public bool DisableRendering;
         public bool ColorClipmapLevels;
 
-        readonly Color[] m_ClipmapDebugHighlights = new Color[]
+        readonly Color[] m_ClipmapMeshDebugColors = new Color[]
         {
                 new(1.0f, 0.2f, 0.0f),
                 new(0.0f, 1.0f, 0.2f),
@@ -69,12 +69,10 @@ namespace LevelGeneration.Terrain
             foreach (ClipmapLevel clipmap in m_Clipmaps)
                 clipmap.Update(m_RenderingData, m_ChunkMesher, ref m_DebugInfo);
 
-            // TODO: mess
-            double t = 0;
+            double t = 0.0;
+
             Stopwatch.Start(ref t);
-
             m_ChunkMesher.ExecutePendingTasksContinuous();
-
             Stopwatch.End(ref t);
 
             m_DebugInfo.meshingJobTimes.AddTime(t);
@@ -89,17 +87,20 @@ namespace LevelGeneration.Terrain
 
             m_DebugInfo.chunkRendererdThisFrame = 0;
 
+            Stopwatch.Start(ref m_DebugInfo.clipmapRenderingTime);
+
             for (int i = 0; i < k_NumBrickMapLevels; i++)
             {
 #if UNITY_EDITOR
-                if (ColorClipmapLevels)
-                    m_MaterialProperties.SetColor("_ClipmapDebugColor", m_ClipmapDebugHighlights[i]);
-                else
+                m_MaterialProperties.SetColor("_ClipmapDebugColor", ColorClipmapLevels ? m_ClipmapMeshDebugColors[i] : Color.white);
+#else
+                m_MaterialProperties.SetColor("_ClipmapDebugColor", Color.white);
 #endif
-                    m_MaterialProperties.SetColor("_ClipmapDebugColor", Color.white);
 
                 m_Clipmaps[i].Render(camera, Material, m_MaterialProperties, ref m_DebugInfo);
             }
+
+            Stopwatch.End(ref m_DebugInfo.clipmapRenderingTime);
         }
 
         class ClipmapLevel
@@ -123,7 +124,7 @@ namespace LevelGeneration.Terrain
                     this.chunkIndex = chunkIndex;
                     this.level = level;
 
-                    worldSize = k_BrickSize * k_WorldScale;
+                    worldSize = k_BrickSize * k_WorldScale * math.pow(2, level);
                     worldPosition = (float3)chunkIndex * worldSize;
                     
                     matrix = Matrix4x4.TRS(worldPosition, Quaternion.identity, Vector3.one);
@@ -184,6 +185,8 @@ namespace LevelGeneration.Terrain
 
                 bool InViewFrustum(Camera camera)
                 {
+                    // TODO: This is broken I think?
+
                     Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
                     return GeometryUtility.TestPlanesAABB(frustumPlanes, new Bounds(worldPosition + (worldSize * 0.5f), worldSize));
                 }
@@ -229,12 +232,8 @@ namespace LevelGeneration.Terrain
 
             public void Render(Camera camera, Material material, MaterialPropertyBlock mpb, ref TerrainDebugInfo debugInfo)
             {
-                Stopwatch.Start(ref debugInfo.frameTime);
-
                 foreach (int3 chunkIndex in chunks.Keys)
                     chunks[chunkIndex].Render(camera, material, mpb, ref debugInfo);
-
-                Stopwatch.End(ref debugInfo.frameTime);
             }
         }
 

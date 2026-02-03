@@ -11,11 +11,11 @@ namespace LevelGeneration.Terrain
         [Range(0, k_NumBrickMapLevels - 1)]
         public int BrickmapDebugLevel;
 
-        public bool EnableShapeVolumes;
         public bool EnableLoadedBricks;
         public bool EnableAllocatedBricks;
-        public bool EnableBrickMapBorders;
+        public bool EnableShapeVolumes;
 
+        public bool EnableBrickMapBorders;
         public bool DetachCamera;
 
         void DrawDebugGizmos()
@@ -25,7 +25,7 @@ namespace LevelGeneration.Terrain
             if (EnableShapeVolumes) m_DensityCache.DrawShapeVolumeIndices(BrickmapDebugLevel, m_Scene);
             if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks(BrickmapDebugLevel);
             if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks(BrickmapDebugLevel);
-            if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelBounds(BrickmapDebugLevel, m_ObserverPosition);
+            if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelsBounds(m_ObserverPosition);
         }
 
         static Color RandomColor(int3 position)
@@ -138,18 +138,25 @@ namespace LevelGeneration.Terrain
                 }
             }
 
+            readonly Color[] k_BrickmapLevelDebugColors = new Color[]
+            {
+                new(1.0f, 0.2f, 0.0f, 1.0f),
+                new(0.0f, 1.0f, 0.2f, 0.8f),
+                new(0.2f, 0.0f, 1.0f, 0.6f),
+                new(0.8f, 0.8f, 0.8f, 0.4f),
+                new(0.4f, 0.4f, 0.4f, 0.2f),
+                new(0.1f, 0.1f, 0.1f, 0.1f)
+            };
+
             public void DrawShapeVolumeIndices(int levelIndex, SDFScene scene)
             {
                 brickMapLevels[levelIndex].DrawShapeVolumeIndices(scene);
             }
 
-            public void DrawMapLevelBounds(int levelIndex, float3 observerPosition)
+            public void DrawMapLevelsBounds(float3 observerPosition)
             {
-                Color color = new(1.0f, 1.0f, 1.0f, 0.5f);
-                //brickMapLevels[levelIndex].DrawBounds(observerPosition, color);
-
-                foreach (SparseBrickMap brickmap in brickMapLevels)
-                    brickmap.DrawBounds(observerPosition, color);
+                for (int i = 0; i < brickMapLevels.Length; i++)
+                    brickMapLevels[i].DrawBounds(observerPosition, k_BrickmapLevelDebugColors[i]);
             }
 
             public void DrawLoadedBricks(int levelIndex)

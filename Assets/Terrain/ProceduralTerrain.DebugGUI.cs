@@ -8,14 +8,11 @@ namespace LevelGeneration.Terrain
 
         void InitializeDebugGUI()
         {
-            m_DebugInfo = new()
-            {
-                brickSize = k_BrickSize,
-                cellsPerBrick = k_BrickSize * k_BrickSize * k_BrickSize,
-                brickmapLevelSize = k_BrickmapLevelSize,
-                densityJobTimes = new(),
-                meshingJobTimes = new()
-            };
+            m_DebugInfo.brickSize = k_BrickSize;
+            m_DebugInfo.cellsPerBrick = k_BrickSize * k_BrickSize * k_BrickSize;
+            m_DebugInfo.brickmapLevelSize = k_BrickmapLevelSize;
+            m_DebugInfo.densityJobTimes ??= new();
+            m_DebugInfo.meshingJobTimes ??= new();
         }
 
         void DisplayDebugGUI()
@@ -38,9 +35,10 @@ namespace LevelGeneration.Terrain
             public MeanTime densityJobTimes;
             public double brickmapUpdateTime;
 
-            public MeanTime meshingJobTimes;
             public int chunkRendererdThisFrame;
-            public double frameTime;
+            public MeanTime meshingJobTimes;
+            public double clipmapUpdateTime;
+            public double clipmapRenderingTime;
 
             const float k_SingleLineHeight = 20.0f;
 
@@ -65,9 +63,7 @@ namespace LevelGeneration.Terrain
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Allocated bricks: {numBricksAllocated} ({brickMapMemoryUsageBytes / 1024}kb)");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Last modified bricks: {recomputedBricks}");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Total recomputation time: {Stopwatch.ToMilliseconds(recomputationTime)}ms");
+                GUI.Label(rect, $"Last modification: recomputed {recomputedBricks} in {Stopwatch.ToMilliseconds(recomputationTime)}ms");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Avg density JOB time: {Stopwatch.ToMilliseconds(densityJobTimes.Avarage())}ms");
                 rect.y += k_SingleLineHeight;
@@ -79,7 +75,12 @@ namespace LevelGeneration.Terrain
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Avg mesher JOB time: {Stopwatch.ToMilliseconds(meshingJobTimes.Avarage())}ms");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Rendering time: {Stopwatch.ToMilliseconds(frameTime)}ms");
+                GUI.Label(rect, $"Clipmap update time: {Stopwatch.ToMilliseconds(clipmapUpdateTime)}ms");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Rendering time: {Stopwatch.ToMilliseconds(clipmapRenderingTime)}ms");
+                rect.y += k_SingleLineHeight * 2.0f;
+
+                GUI.Label(rect, $"Total frame time: {Stopwatch.ToMilliseconds(brickmapUpdateTime + clipmapUpdateTime + clipmapRenderingTime)}ms");
             }
         }
     }

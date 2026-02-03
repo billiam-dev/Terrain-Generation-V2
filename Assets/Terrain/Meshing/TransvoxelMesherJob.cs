@@ -182,10 +182,8 @@ namespace LevelGeneration.Terrain.Meshing
             float3 normal = math.normalize((t * n0) + ((1 - t) * n1));
 
             // Compute primary position.
-            float3 adjustedOrigin = (stepSize - 1) * chunkSize * (float3)chunkIndex; // This adjusts for the density indexes not being scaled based on the clipmap level.
-            
-            float3 p0 = adjustedOrigin + (float3)i0 * stepSize;
-            float3 p1 = adjustedOrigin + (float3)i1 * stepSize;
+            float3 p0 = (float3)i0 * stepSize;
+            float3 p1 = (float3)i1 * stepSize;
             float3 position = (t * p0) + ((1 - t) * p1);
 
             // Compute secondary position.

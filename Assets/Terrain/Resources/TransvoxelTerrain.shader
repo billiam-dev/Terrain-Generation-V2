@@ -79,7 +79,7 @@ Shader "TransvoxelTerrain"
                 float lightIntensity = saturate(dot(IN.normalWS, -mainLight.direction));
                 float3 lightColor = mainLight.color * lightIntensity + _GlossyEnvironmentColor.rgb;
 
-                return albedoColor * lightColor * _ClipmapDebugColor;
+                return albedoColor * lightColor * (_ClipmapDebugColor + 0.5f / 2.0f);
             }
 
             ENDHLSL
