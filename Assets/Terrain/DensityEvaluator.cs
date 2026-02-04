@@ -98,8 +98,7 @@ namespace LevelGeneration.Terrain
                 int y = x / extendedBrickSize;
                 x -= y * extendedBrickSize;
 
-                int3 extendedCellIndex = new(x, y, z);
-                int3 cellIndex = extendedCellIndex - 2;
+                int3 cellIndex = new int3(x, y, z) - 1; // TODO: may have to extend the brick size by 2, normal vector artefacts are created with this system.
 
                 // Derrive world position from iteration index.
                 int3 globalCellIndex = ((brickIndex * brickSize) + cellIndex) * levelScale;

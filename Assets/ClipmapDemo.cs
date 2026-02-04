@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using Unity.Mathematics;
+using UnityEditor;
 using UnityEngine;
 
 namespace LevelGeneration.Terrain.DevTools
@@ -35,11 +36,18 @@ namespace LevelGeneration.Terrain.DevTools
 
             Gizmos.matrix = Matrix4x4.identity;
 
+            string debugText = "Expected grid offsets:\n";
+
             for (int i = 0; i < m_NumClipmapLevels; i++)
-                DrawClipmapLevel(i, m_LevelColors[i]);
+            {
+                debugText += string.Format("{0}: ", i);
+                DrawClipmapLevel(i, m_LevelColors[i], ref debugText);
+            }
+
+            Handles.Label(transform.position, debugText);
         }
 
-        void DrawClipmapLevel(int clipmapLevelIndex, Color color)
+        void DrawClipmapLevel(int clipmapLevelIndex, Color color, ref string debugText)
         {
             // Calculate size of chunk.
             float3 chunkSize = k_ChunkSize * math.pow(2, clipmapLevelIndex);
@@ -73,12 +81,14 @@ namespace LevelGeneration.Terrain.DevTools
 
             m_ClipmapLevelOrigins[clipmapLevelIndex] = originChunkIndex;
 
-            int3 lowerGridpublicOffset = 0;
+            int3 lowerGridOffset = 0;
             if (clipmapLevelIndex > 0)
             {
-                lowerGridpublicOffset = m_ClipmapLevelOrigins[clipmapLevelIndex - 1] - originChunkIndex - originChunkIndex;
-                lowerGridpublicOffset /= 2; // Not exactly sure why I have to divide by 2 but it works.
+                lowerGridOffset = m_ClipmapLevelOrigins[clipmapLevelIndex - 1] - originChunkIndex - originChunkIndex;
+                lowerGridOffset /= 2; // Not exactly sure why I have to divide by 2 but it works.
             }
+
+            debugText += string.Format("({0}, {1})\n", lowerGridOffset.x, lowerGridOffset.y);
 
             int3 offsetIndex;
             int3 chunkIndex;
@@ -98,11 +108,11 @@ namespace LevelGeneration.Terrain.DevTools
                     // Arrived at this set of comparisons by determining what cells should be rendered and then flipping the logic for early continue.
                     if (clipmapLevelIndex > 0)
                     {
-                        if (offsetIndex.x < lowerGridpublicOffset.x + quarterClipmapSize &&
-                            offsetIndex.x >= lowerGridpublicOffset.x - quarterClipmapSize)
+                        if (offsetIndex.x < lowerGridOffset.x + quarterClipmapSize &&
+                            offsetIndex.x >= lowerGridOffset.x - quarterClipmapSize)
                         {
-                            if (offsetIndex.y < lowerGridpublicOffset.y + quarterClipmapSize &&
-                                offsetIndex.y >= lowerGridpublicOffset.y - quarterClipmapSize)
+                            if (offsetIndex.y < lowerGridOffset.y + quarterClipmapSize &&
+                                offsetIndex.y >= lowerGridOffset.y - quarterClipmapSize)
                             {
                                 continue;
                             }

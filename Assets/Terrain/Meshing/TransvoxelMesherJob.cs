@@ -20,7 +20,6 @@ namespace LevelGeneration.Terrain.Meshing
         [ReadOnly] public int3 chunkIndex;          // Index into the density brick map at this clipmap level.
         [ReadOnly] public int chunkSize;            // Number of cells per axis in a density chunk.
         [ReadOnly] public float cellScale;          // World scale of a single cell, determines the scale of the entire terrain.
-        [ReadOnly] public float stepSize;           // TODO
         [ReadOnly] public float padding;            // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
         [ReadOnly] public DensitySampler chunks;    // Terrain density data.
 
@@ -34,19 +33,23 @@ namespace LevelGeneration.Terrain.Meshing
         [NativeDisableParallelForRestriction]
         public NativeArray<int2> meshStartIndices;
 
-        // Reusable cell array
+        // Reusable cells array
         [NativeDisableParallelForRestriction]
         public NativeArray<ReuseCellVertexIndices> vertexIndices;
 
+        float levelScale;
+        bool makeTransitionCells;
+
         public void Execute()
         {
-            bool makeTransitionCells = clipmapLevel > 0;
+            levelScale = math.pow(2, clipmapLevel);
+            makeTransitionCells = clipmapLevel > 0;
 
             // March all cells to create default meshes.
             for (int x = 0; x < chunkSize; x++)
                 for (int y = 0; y < chunkSize; y++)
                     for (int z = 0; z < chunkSize; z++)
-                        MarchRegularCell(new int3(x, y, z), makeTransitionCells);
+                        MarchRegularCell(new int3(x, y, z));
 
             // TODO: Re-add transvoxel meshing!
 
@@ -69,7 +72,7 @@ namespace LevelGeneration.Terrain.Meshing
         #region Regular Cells
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void MarchRegularCell(int3 index, bool padForTransitions)
+        void MarchRegularCell(int3 index)
         {
             // Fetch the 8 corner indices of the current cube.
             CubeCorners<float> density = new();
@@ -131,7 +134,7 @@ namespace LevelGeneration.Terrain.Meshing
                 // Check if we are at the maximum edges of a cell. If so, always produce a new vertex.
                 if (cellDirection == 8)
                 {
-                    ushort vertexIndex = AddRegularVertex(index, v0, v1, t, padForTransitions);
+                    ushort vertexIndex = AddRegularVertex(index, v0, v1, t);
 
                     reuseCell[vertexEdgeIndex] = vertexIndex;
                     cellIndices[i] = vertexIndex;
@@ -144,7 +147,7 @@ namespace LevelGeneration.Terrain.Meshing
                         (index.y == 0 && cellOffset.y == -1) ||
                         (index.z == 0 && cellOffset.z == -1))
                     {
-                        cellIndices[i] = AddRegularVertex(index, v0, v1, t, padForTransitions);
+                        cellIndices[i] = AddRegularVertex(index, v0, v1, t);
                     }
                     else
                     {
@@ -165,7 +168,7 @@ namespace LevelGeneration.Terrain.Meshing
             }
         }
 
-        ushort AddRegularVertex(int3 index, byte v0, byte v1, float t, bool padForTransitions)
+        ushort AddRegularVertex(int3 index, byte v0, byte v1, float t)
         {
             // Compute edge indices.
             int3 i0 = index + TransvoxelTables.CornerOffsets[v0];
@@ -173,7 +176,7 @@ namespace LevelGeneration.Terrain.Meshing
 
             // Make edge mask.
             int edgeMask = 0;
-            if (padForTransitions)
+            if (makeTransitionCells)
                 edgeMask = MakeEdgeMask(i0, i1);
 
             // Compute normals with adjacent samples.
@@ -182,8 +185,8 @@ namespace LevelGeneration.Terrain.Meshing
             float3 normal = math.normalize((t * n0) + ((1 - t) * n1));
 
             // Compute primary position.
-            float3 p0 = (float3)i0 * stepSize;
-            float3 p1 = (float3)i1 * stepSize;
+            float3 p0 = (float3)i0 * levelScale;
+            float3 p1 = (float3)i1 * levelScale;
             float3 position = (t * p0) + ((1 - t) * p1);
 
             // Compute secondary position.

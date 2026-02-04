@@ -14,6 +14,7 @@ namespace LevelGeneration.Terrain
         
         SerializedProperty m_EnableLoadedBricks;
         SerializedProperty m_EnableAllocatedBricks;
+        SerializedProperty m_DrawEdgeBricks;
         SerializedProperty m_EnableShapeVolumes;
 
         SerializedProperty m_EnableBrickMapBorders;
@@ -32,6 +33,7 @@ namespace LevelGeneration.Terrain
         
         GUIContent m_EnableLoadedBricksGUI;
         GUIContent m_EnableAllocatedBricksGUI;
+        GUIContent m_DrawEdgeBricksGUI;
         GUIContent m_EnableShapeVolumesGUI;
 
         GUIContent m_EnableBrickMapBordersGUI;
@@ -54,6 +56,7 @@ namespace LevelGeneration.Terrain
             m_BrickmapDebugLevel = o.Find(x => x.BrickmapDebugLevel);
             m_EnableLoadedBricks = o.Find(x => x.EnableLoadedBricks);
             m_EnableAllocatedBricks = o.Find(x => x.EnableAllocatedBricks);
+            m_DrawEdgeBricks = o.Find(x => x.DrawEdgeBricks);
             m_EnableShapeVolumes = o.Find(x => x.EnableShapeVolumes);
             
             m_EnableBrickMapBorders = o.Find(x => x.EnableBrickMapBorders);
@@ -71,6 +74,7 @@ namespace LevelGeneration.Terrain
             
             m_EnableLoadedBricksGUI = new GUIContent("Loaded Bricks");
             m_EnableAllocatedBricksGUI = new GUIContent("Allocated Bricks");
+            m_DrawEdgeBricksGUI = new GUIContent("Include Edge Bricks");
             m_EnableShapeVolumesGUI = new GUIContent("Shape Volumes");
 
             m_EnableBrickMapBordersGUI = new GUIContent("Brickmap Bounds");
@@ -101,6 +105,7 @@ namespace LevelGeneration.Terrain
             EditorGUI.indentLevel++;
             EditorGUILayout.PropertyField(m_EnableLoadedBricks, m_EnableLoadedBricksGUI);
             EditorGUILayout.PropertyField(m_EnableAllocatedBricks, m_EnableAllocatedBricksGUI);
+            EditorGUILayout.PropertyField(m_DrawEdgeBricks, m_DrawEdgeBricksGUI);
             EditorGUILayout.PropertyField(m_EnableShapeVolumes, m_EnableShapeVolumesGUI);
 
             EditorGUILayout.PropertyField(m_EnableDensitySampler, m_EnableDensitySamplerGUI);

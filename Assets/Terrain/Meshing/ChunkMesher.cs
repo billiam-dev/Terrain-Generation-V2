@@ -79,7 +79,6 @@ namespace LevelGeneration.Terrain.Meshing
                 chunkIndex = meshingTask.chunkIndex,
                 chunkSize = meshingTask.chunkSize,
                 cellScale = meshingTask.worldScale,
-                stepSize = math.pow(2, meshingTask.clipmapLevel),
                 padding = meshingTask.transitionCellPadding,
                 chunks = meshingTask.densitySampler,
                 vertices = m_Vertices,

@@ -72,9 +72,17 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            public void DrawDensitySampler(int brickmapLevel, Vector3 position)
+            public void DrawDensitySampler(int levelIndex, Vector3 position)
             {
-                brickMapLevels[brickmapLevel].DrawDensitySampler(position);
+                if (levelIndex == -1)
+                {
+                    // TODO: find lowest level to sample at.
+                    // Also add interpolation, even at lowest level this will work.
+                }
+                else
+                {
+                    brickMapLevels[levelIndex].DrawDensitySampler(position);
+                }
             }
         }
     }
