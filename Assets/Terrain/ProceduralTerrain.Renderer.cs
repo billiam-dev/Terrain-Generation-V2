@@ -215,7 +215,7 @@ namespace LevelGeneration.Terrain
                         chunks.Remove(chunkIndex);
                 }
 
-                // Add and update new chunks.
+                // Add new chunk and do updates.
                 for (int x = 0; x < size.x; x++)
                 {
                     for (int y = 0; y < size.y; y++)
@@ -262,6 +262,7 @@ namespace LevelGeneration.Terrain
             // Allows the mesher to sample all density levels at this brickmap level via pointers to cached density arrays.
             public DensitySampler densitySampler;
 
+            // The origin and size of the intended clipmap level.
             public int3 originIndex;
             public int3 size;
 
@@ -311,6 +312,8 @@ namespace LevelGeneration.Terrain
         [NativeDisableUnsafePtrRestriction]
         NativeHashMap<int3, IntPtr> densityPointers;
 
+        // TODO: ^ convert to single hash map of structs. OR better yet use 0 & 1 pointer to mean empty / full?
+
         public void Allocate(int size)
         {
             brickStates = new(size * size * size, Allocator.Persistent);
@@ -337,11 +340,9 @@ namespace LevelGeneration.Terrain
 
         public unsafe readonly float Sample(int3 globalCellIndex, int brickSize)
         {
-            int3 brickIndex = (int3)math.floor((double3)globalCellIndex / brickSize); // TODO: find a way to do this without the cast (faster). Also note that casting to a float3 fuks everything up with precision errors.
+            // TODO: sample lower brickmap levels if data does not exist for this one.
 
-            // Early return if the brick is not loaded. Note: this will defo never be hit now so it is hashed out.
-            //if (!brickStates.ContainsKey(brickIndex))
-            //    return ProceduralTerrain.k_EmptyDensityValue;
+            int3 brickIndex = (int3)math.floor((double3)globalCellIndex / brickSize); // TODO: find a way to do this without the cast (faster). Also note that casting to a float3 fuks everything up with precision errors.
 
             // Early return if the brick is completely empty or full.
             int brickState = brickStates[brickIndex];

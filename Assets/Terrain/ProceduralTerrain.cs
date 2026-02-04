@@ -94,7 +94,7 @@ namespace LevelGeneration.Terrain
         {
             // Assign the camera from which the terrain is originated.
 #if UNITY_EDITOR
-            if (Application.isPlaying)
+            if (Application.isPlaying || DetachCamera)
                 m_ObserverCamera = Camera.main;
             else
                 m_ObserverCamera = Camera.current;
@@ -108,11 +108,7 @@ namespace LevelGeneration.Terrain
             m_RenderingData.ObserverCamera = m_ObserverCamera;
 
             // Update the observer position.
-#if UNITY_EDITOR
-            m_ObserverPosition = DetachCamera ? transform.position : m_ObserverCamera.transform.position;
-#else
             m_ObserverPosition = m_ObserverCamera.transform.position;
-#endif
 
             // Update the density cache based on the observer position and shape updates.
             Stopwatch.Start(ref m_DebugInfo.brickmapUpdateTime);
@@ -550,7 +546,7 @@ namespace LevelGeneration.Terrain
                             localBrickIndex.y >= lowerGridOffset.y - overlapExtent)
                         {
                             if (localBrickIndex.z < lowerGridOffset.z + overlapExtent &&
-                                brickIndex.z >= lowerGridOffset.z - overlapExtent)
+                                localBrickIndex.z >= lowerGridOffset.z - overlapExtent)
                             {
                                 return true;
                             }

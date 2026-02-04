@@ -1,3 +1,4 @@
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace LevelGeneration.Terrain
@@ -48,6 +49,8 @@ namespace LevelGeneration.Terrain
 
                 int cellsPerBrick = brickSize * brickSize * brickSize;
                 int brickMapMemoryUsageBytes = numBricksAllocated * cellsPerBrick * sizeof(float);
+                double totalFrameTime = brickmapUpdateTime + clipmapUpdateTime + clipmapRenderingTime;
+                int fps = (int)math.floor(1.0 / totalFrameTime);
 
                 // Constants
                 GUI.Label(rect, $"Brick Size: {brickSize} (Cells per brick: {cellsPerBrick})");
@@ -83,7 +86,7 @@ namespace LevelGeneration.Terrain
                 GUI.Label(rect, $"Rendering time: {Stopwatch.ToMilliseconds(clipmapRenderingTime)}ms");
                 rect.y += k_SingleLineHeight * 2.0f;
 
-                GUI.Label(rect, $"Total frame time: {Stopwatch.ToMilliseconds(brickmapUpdateTime + clipmapUpdateTime + clipmapRenderingTime)}ms");
+                GUI.Label(rect, $"Total frame time: {Stopwatch.ToMilliseconds(totalFrameTime)}ms ({fps}fps)");
             }
         }
     }
