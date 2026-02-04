@@ -28,7 +28,6 @@ namespace LevelGeneration.Terrain
         };
 #endif
 
-        RenderingData m_RenderingData;
         BatchChunkMesher m_Mesher;
         ClipmapLevel[] m_Clipmaps;
 
@@ -39,10 +38,10 @@ namespace LevelGeneration.Terrain
         void InitializeRendering()
         {
             m_Mesher = new();
-            m_Clipmaps = new ClipmapLevel[k_NumBrickMapLevels];
+            m_Clipmaps = new ClipmapLevel[k_NumBrickmapLevels];
             m_MaterialProperties = new();
 
-            for (int i = 0; i < k_NumBrickMapLevels; i++)
+            for (int i = 0; i < k_NumBrickmapLevels; i++)
                 m_Clipmaps[i] = new(i);
 
             m_Mesher.Allocate();
@@ -57,22 +56,26 @@ namespace LevelGeneration.Terrain
             m_MaterialProperties = null;
         }
 
-        void UpdateClipmap()
+        void UpdateClipmap(RenderingData renderingData)
         {
 #if UNITY_EDITOR
             if (DisableRendering)
                 return;
 #endif
 
-            m_RenderingData.brickmapData = m_DensityCache.GetRenderingData();
-
             m_DebugInfo.numChunks = 0;
 
+            // Early return if there is no camera.
+            if (!renderingData.ObserverCamera)
+                return;
+
+            // Update clipmap levels.
             foreach (ClipmapLevel clipmap in m_Clipmaps)
-                clipmap.Update(m_RenderingData, m_Mesher, ref m_DebugInfo);
+                clipmap.Update(renderingData, m_Mesher, ref m_DebugInfo);
 
             double t = 0.0;
 
+            // Execute meshing tasks queued this frame.
             Stopwatch.Start(ref t);
             m_Mesher.ExecutePendingTasksContinuous();
             Stopwatch.End(ref t);
@@ -91,7 +94,7 @@ namespace LevelGeneration.Terrain
 
             Stopwatch.Start(ref m_DebugInfo.clipmapRenderingTime);
 
-            for (int i = 0; i < k_NumBrickMapLevels; i++)
+            for (int i = 0; i < k_NumBrickmapLevels; i++)
             {
 #if UNITY_EDITOR
                 m_MaterialProperties.SetColor("_ClipmapDebugColor", ColorClipmapLevels ? m_ClipmapMeshDebugColors[i] : Color.white);
@@ -147,7 +150,7 @@ namespace LevelGeneration.Terrain
                     BrickmapRenderingData brickmapRenderingData = renderingData.brickmapData[level];
 
                     // Check if the density data within this chunk has changed and flag for remeshing if true.
-                    if (brickmapRenderingData.CheckAndRemovePendingRemesh(chunkIndex))
+                    if (brickmapRenderingData.modifiedBricks.Contains(chunkIndex))
                         meshUpToDate = false;
 
                     // Remesh if necessary.
@@ -235,6 +238,7 @@ namespace LevelGeneration.Terrain
                     }
                 }
 
+                debugInfo.numModifiedChunks = brickmapRenderingData.modifiedBricks.Count;
                 debugInfo.numChunks += chunks.Count;
             }
 
@@ -257,7 +261,7 @@ namespace LevelGeneration.Terrain
             public Camera ObserverCamera;
         }
 
-        struct BrickmapRenderingData : IDisposable
+        struct BrickmapRenderingData
         {
             // Allows the mesher to sample all density levels at this brickmap level via pointers to cached density arrays.
             public DensitySampler densitySampler;
@@ -267,35 +271,7 @@ namespace LevelGeneration.Terrain
             public int3 size;
 
             // Tells the mesher which bricks have been modified and need to be remeshed.
-            HashSet<int3> modifiedBricks;
-
-            public void Allocate(int mapSize)
-            {
-                densitySampler.Allocate(mapSize);
-                modifiedBricks = new();
-            }
-
-            public void Dispose()
-            {
-                densitySampler.Dispose();
-                modifiedBricks = null;
-            }
-
-            public readonly void MarkBrickAsModified(int3 index)
-            {
-                modifiedBricks.Add(index);
-            }
-
-            public readonly bool CheckAndRemovePendingRemesh(int3 index)
-            {
-                if (modifiedBricks.Contains(index))
-                {
-                    modifiedBricks.Remove(index);
-                    return true;
-                }
-
-                return false;
-            }
+            public HashSet<int3> modifiedBricks;
         }
     }
 
@@ -347,7 +323,7 @@ namespace LevelGeneration.Terrain
             // Early return if the brick is completely empty or full.
             int brickState = brickStates[brickIndex];
             if (brickState != 2)
-                return math.select(ProceduralTerrain.k_FullDensityValue, ProceduralTerrain.k_EmptyDensityValue, brickState == 0);
+                return math.select(ProceduralTerrain.FullDensityValue, ProceduralTerrain.EmptyDensityValue, brickState == 0);
 
             int3 localCellIndex = globalCellIndex - (brickIndex * brickSize);
             int densityIndex = (localCellIndex.z * brickSize * brickSize) + (localCellIndex.y * brickSize) + localCellIndex.x;

@@ -302,7 +302,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: -40}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -420,12 +420,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ProceduralTerrain
   BrickmapDebugLevel: -1
-  EnableLoadedBricks: 1
+  EnableLoadedBricks: 0
   EnableAllocatedBricks: 1
   DrawEdgeBricks: 0
   EnableShapeVolumes: 0
   EnableBrickMapBorders: 1
-  DetachCamera: 1
+  DetachCamera: 0
   EnableDensitySampler: 0
   DensitySamplerPosition: {x: -5.0985203, y: 8.392872, z: -47.253212}
   Material: {fileID: 2100000, guid: 8c0b7369761cd4d4ab23de439d710b69, type: 2}
@@ -667,7 +667,7 @@ MonoBehaviour:
   m_DistanceFunction: 0
   m_BlendMode: 0
   m_Smoothness: 1
-  m_Dimention1: 14.611681
+  m_Dimention1: 12
   m_Dimention2: 1
   m_Dimention3: 4
 --- !u!1001 &1103205056

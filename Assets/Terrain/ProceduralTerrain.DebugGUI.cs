@@ -11,7 +11,7 @@ namespace LevelGeneration.Terrain
         {
             m_DebugInfo.brickSize = k_BrickSize;
             m_DebugInfo.brickmapLevelSize = k_BrickmapLevelSize;
-            m_DebugInfo.numBrickmapLevels = k_NumBrickMapLevels;
+            m_DebugInfo.numBrickmapLevels = k_NumBrickmapLevels;
 
             m_DebugInfo.densityJobTimes ??= new();
             m_DebugInfo.meshingJobTimes ??= new();
@@ -37,6 +37,7 @@ namespace LevelGeneration.Terrain
 
             public int numChunks;
             public int chunkRendererdThisFrame;
+            public int numModifiedChunks;
             public MeanTime meshingJobTimes;
             public double clipmapUpdateTime;
             public double clipmapRenderingTime;
@@ -78,6 +79,8 @@ namespace LevelGeneration.Terrain
                 GUI.Label(rect, $"Total chunks: {numChunks}");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Drawing chunks: {chunkRendererdThisFrame}");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Modified chunks: {numModifiedChunks}");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Avg mesher JOB time: {Stopwatch.ToMilliseconds(meshingJobTimes.Avarage())}ms");
                 rect.y += k_SingleLineHeight;

@@ -1087,7 +1087,7 @@ namespace LevelGeneration.Terrain.Meshing
             new ushort[] {}
         };
 
-        // Order: front, back, right, left, up, down.
+        // Order: (x, -x, y, -y, z, -z)
         public static readonly int3[][] TransitionCellOffsets =
         {
             new int3[] { new(2, 0, 0), new(2, 0, 1), new(2, 0, 2), new(2, 1, 0), new(2, 1, 1), new(2, 1, 2), new(2, 2, 0), new(2, 2, 1), new(2, 2, 2) },

@@ -44,7 +44,7 @@ namespace LevelGeneration.Terrain
             DensityJob job = new()
             {
                 shapes = shapes,
-                initialValue = ProceduralTerrain.k_EmptyDensityValue,
+                initialValue = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 extendedBrickSize = extendedBrickSize,

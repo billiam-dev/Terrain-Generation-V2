@@ -8,7 +8,7 @@ namespace LevelGeneration.Terrain
 {
     public partial class ProceduralTerrain : MonoBehaviour
     {
-        [Range(-1, k_NumBrickMapLevels - 1)]
+        [Range(-1, k_NumBrickmapLevels - 1)]
         public int BrickmapDebugLevel;
 
         public bool EnableLoadedBricks;
@@ -26,7 +26,7 @@ namespace LevelGeneration.Terrain
             if (EnableShapeVolumes) m_DensityCache.DrawShapeVolumeIndices(BrickmapDebugLevel, m_Scene);
             if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks(BrickmapDebugLevel, DrawEdgeBricks);
             if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks(BrickmapDebugLevel, DrawEdgeBricks);
-            if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelsBounds(BrickmapDebugLevel, m_ObserverPosition);
+            if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelsBounds(BrickmapDebugLevel);
         }
 
         static Color RandomPastelColor(int3 position)
@@ -82,10 +82,8 @@ namespace LevelGeneration.Terrain
                     }
                 }
 
-                public void DrawBounds(float3 observerPosition, Color color)
+                public void DrawBounds(Color color)
                 {
-                    int3 originIndex = GetOriginIndex(observerPosition);
-
                     float3 worldBrickSize = brickSize * levelScale * worldScale;
 
                     float3 brickmapLevelCentre = worldBrickSize * originIndex;
@@ -173,16 +171,16 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            public void DrawMapLevelsBounds(int levelIndex, float3 observerPosition)
+            public void DrawMapLevelsBounds(int levelIndex)
             {
                 if (levelIndex == -1)
                 {
                     for (int i = 0; i < brickMapLevels.Length; i++)
-                        brickMapLevels[i].DrawBounds(observerPosition, k_BrickmapLevelDebugColors[i]);
+                        brickMapLevels[i].DrawBounds(k_BrickmapLevelDebugColors[i]);
                 }
                 else
                 {
-                    brickMapLevels[levelIndex].DrawBounds(observerPosition, k_BrickmapLevelDebugColors[levelIndex]);
+                    brickMapLevels[levelIndex].DrawBounds(k_BrickmapLevelDebugColors[levelIndex]);
                 }
             }
 
