@@ -13,13 +13,19 @@ namespace LevelGeneration.Terrain
         NativeReference<bool> m_PositiveValueFound;
         NativeReference<bool> m_NegativeValueFound;
 
+        int m_DensityDataSize;
+        int m_DensityDataPoints;
         double m_ExecutionTime;
 
         const int k_InnerloopBatchCount = 32;
 
         public void Allocate(int brickSize)
         {
-            m_WorkingDensityData = new(brickSize * brickSize * brickSize, Allocator.Persistent);
+            m_DensityDataSize = brickSize + 3;
+            m_DensityDataPoints = m_DensityDataSize * m_DensityDataSize * m_DensityDataSize;
+
+            m_WorkingDensityData = new(m_DensityDataSize * m_DensityDataSize * m_DensityDataSize, Allocator.Persistent);
+
             m_PositiveValueFound = new(Allocator.Persistent);
             m_NegativeValueFound = new(Allocator.Persistent);
         }
@@ -33,11 +39,6 @@ namespace LevelGeneration.Terrain
 
         public DensityEvaluationResult ExecuteJob(NativeList<Shape> shapes, int3 brickIndex, int brickSize, float terrainScale, int levelScale)
         {
-            // Brick has to evaluate adjacent values to know whether it needs to be allocated or not.
-            // This is because the mesher requires an extra point to match the bricks pointsPerAxis in cells, and also another on all sides for normal computation.
-            // By implementing a more strict check for density allocated, bricks are only allocated when absolutly necessary as opposed to simply always allocating bricks next to !isEmpty && !isFull bricks.
-            int extendedBrickSize = brickSize + 3;
-
             m_PositiveValueFound.Value = false;
             m_NegativeValueFound.Value = false;
 
@@ -47,7 +48,7 @@ namespace LevelGeneration.Terrain
                 initialValue = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
-                extendedBrickSize = extendedBrickSize,
+                extendedBrickSize = m_DensityDataSize,
                 terrainScale = terrainScale,
                 levelScale = levelScale,
                 density = m_WorkingDensityData,
@@ -56,7 +57,7 @@ namespace LevelGeneration.Terrain
             };
 
             Stopwatch.Start(ref m_ExecutionTime);
-            job.ScheduleParallel(extendedBrickSize * extendedBrickSize * extendedBrickSize, k_InnerloopBatchCount, default).Complete();
+            job.ScheduleParallel(m_DensityDataPoints, k_InnerloopBatchCount, default).Complete();
             Stopwatch.End(ref m_ExecutionTime);
 
             bool isEmpty = m_PositiveValueFound.Value && !m_NegativeValueFound.Value;
@@ -98,10 +99,10 @@ namespace LevelGeneration.Terrain
                 int y = x / extendedBrickSize;
                 x -= y * extendedBrickSize;
 
-                int3 cellIndex = new int3(x, y, z) - 1; // TODO: may have to extend the brick size by 2, normal vector artefacts are created with this system.
+                int3 itterationIndex = new(x, y, z);
 
                 // Derrive world position from iteration index.
-                int3 globalCellIndex = ((brickIndex * brickSize) + cellIndex) * levelScale;
+                int3 globalCellIndex = ((brickIndex * brickSize) + (itterationIndex - 1)) * levelScale;
                 float3 worldPosition = (float3)globalCellIndex * terrainScale;
 
                 // Apply shapes.
@@ -133,19 +134,21 @@ namespace LevelGeneration.Terrain
                 }
 
                 // If the cell is in bounds of the density array, update the density array.
-                if (math.all(cellIndex >= 0) && math.all(cellIndex < brickSize))
-                    density[(cellIndex.z * brickSize * brickSize) + (cellIndex.y * brickSize) + cellIndex.x] = newDensity;
+                density[index] = newDensity;
 
                 // Update positive / negative value flags, both in bounds and out of bounds values are considered in this check.
-                if (newDensity > 0)
+                if (math.all(itterationIndex > 0) && math.all(itterationIndex <= brickSize + 1)) // TODO: use int index to avoid math.all()
                 {
-                    if (positiveValueFound.Value == false)
-                        positiveValueFound.Value = true;
-                }
-                else
-                {
-                    if (negativeValueFound.Value == false)
-                        negativeValueFound.Value = true;
+                    if (newDensity > 0)
+                    {
+                        if (positiveValueFound.Value == false)
+                            positiveValueFound.Value = true;
+                    }
+                    else
+                    {
+                        if (negativeValueFound.Value == false)
+                            negativeValueFound.Value = true;
+                    }
                 }
             }
 
@@ -249,9 +252,6 @@ namespace LevelGeneration.Terrain
         readonly double executionTime;
 
         public readonly NativeArray<float> Density => density;
-        public readonly bool IsEmpty => state == State.Empty;
-        public readonly bool IsFull => state == State.Full;
-        public readonly bool IntersectsSurface => state == State.Partial;
         public readonly int DensityState => (int)state;
         public readonly double ExecutionTime => executionTime;
 

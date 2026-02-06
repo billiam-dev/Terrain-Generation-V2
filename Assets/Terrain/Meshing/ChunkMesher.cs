@@ -80,7 +80,7 @@ namespace LevelGeneration.Terrain.Meshing
                 chunkSize = meshingTask.chunkSize,
                 cellScale = meshingTask.worldScale,
                 padding = meshingTask.transitionCellPadding,
-                chunks = meshingTask.densitySampler,
+                densityPtr = meshingTask.densityPtr,
                 vertices = m_Vertices,
                 indices = m_Indices,
                 meshStartIndices = m_MeshStartIndices,
@@ -212,9 +212,9 @@ namespace LevelGeneration.Terrain.Meshing
         public readonly float worldScale;
         public readonly int clipmapLevel;
         public readonly float transitionCellPadding;
-        public readonly DensitySampler densitySampler;
+        public readonly IntPtr densityPtr;
 
-        public MeshingTask(Mesh mesh, Mesh[] transitionMeshes, int3 chunkIndex, int chunkSize, float worldScale, int clipmapLevel, float transitionCellPadding, DensitySampler densitySampler)
+        public MeshingTask(Mesh mesh, Mesh[] transitionMeshes, int3 chunkIndex, int chunkSize, float worldScale, int clipmapLevel, float transitionCellPadding, IntPtr densityPtr)
         {
             this.mesh = mesh;
             this.transitionMeshes = transitionMeshes;
@@ -223,7 +223,7 @@ namespace LevelGeneration.Terrain.Meshing
             this.worldScale = worldScale;
             this.clipmapLevel = clipmapLevel;
             this.transitionCellPadding = transitionCellPadding;
-            this.densitySampler = densitySampler;
+            this.densityPtr = densityPtr;
         }
 
         public bool CanReplace(MeshingTask task)

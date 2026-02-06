@@ -2,7 +2,6 @@ using LevelGeneration.Terrain.Meshing;
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -66,21 +65,24 @@ namespace LevelGeneration.Terrain
             m_DebugInfo.numChunks = 0;
 
             // Early return if there is no camera.
-            if (!renderingData.ObserverCamera)
+            if (!renderingData.observerCamera)
                 return;
 
             // Update clipmap levels.
             foreach (ClipmapLevel clipmap in m_Clipmaps)
                 clipmap.Update(renderingData, m_Mesher, ref m_DebugInfo);
 
-            double t = 0.0;
+            m_DebugInfo.numRemeshTasks = m_Mesher.NumPendingTasks;
+
+            double meshingTaskTime = 0.0;
 
             // Execute meshing tasks queued this frame.
-            Stopwatch.Start(ref t);
-            m_Mesher.ExecutePendingTasksContinuous();
-            Stopwatch.End(ref t);
+            Stopwatch.Start(ref meshingTaskTime);
+            //m_Mesher.ExecutePendingTasksContinuous();
+            m_Mesher.ExecutePendingTasks();
+            Stopwatch.End(ref meshingTaskTime);
 
-            m_DebugInfo.meshingJobTimes.AddTime(t);
+            m_DebugInfo.remeshTaskTime = meshingTaskTime;
         }
 
         void RenderTerrain(ScriptableRenderContext context, Camera camera)
@@ -90,7 +92,7 @@ namespace LevelGeneration.Terrain
                 return;
 #endif
 
-            m_DebugInfo.chunkRendererdThisFrame = 0;
+            m_DebugInfo.numChunkRendererd = 0;
 
             Stopwatch.Start(ref m_DebugInfo.clipmapRenderingTime);
 
@@ -144,7 +146,8 @@ namespace LevelGeneration.Terrain
 
                 public void Update(RenderingData renderingData, BatchChunkMesher mesher, ref TerrainDebugInfo debugInfo)
                 {
-                    if (!InViewFrustum(renderingData.ObserverCamera))
+                    // Note: meshing can be skipped or delayed for unviewed chunks where collision is unnecessary.
+                    if (level > 0 && !InViewFrustum(renderingData.observerCamera))
                         return;
 
                     BrickmapRenderingData brickmapRenderingData = renderingData.brickmapData[level];
@@ -165,7 +168,7 @@ namespace LevelGeneration.Terrain
                                 k_WorldScale,
                                 level,
                                 k_TransitionCellPadding,
-                                brickmapRenderingData.densitySampler
+                                brickmapRenderingData.allocatedBricks[chunkIndex].densityPtr
                             )
                         );
 
@@ -181,7 +184,7 @@ namespace LevelGeneration.Terrain
                     if (meshUpToDate && mesh.vertexCount > 2)
                     {
                         Graphics.DrawMesh(mesh, matrix, material, 0, camera, 0, mpb);
-                        debugInfo.chunkRendererdThisFrame++;
+                        debugInfo.numChunkRendererd++;
                     }
                 }
 
@@ -200,7 +203,6 @@ namespace LevelGeneration.Terrain
                 this.level = level;
                 chunks = new();
             }
-
             public void Update(RenderingData renderingData, BatchChunkMesher mesher, ref TerrainDebugInfo debugInfo)
             {
                 BrickmapRenderingData brickmapRenderingData = renderingData.brickmapData[level];
@@ -214,7 +216,7 @@ namespace LevelGeneration.Terrain
                 // Remove chunks that are no longer allocated.
                 foreach (int3 chunkIndex in chunksCopy)
                 {
-                    if (!BrickInBounds(chunkIndex, origin, size) || !brickmapRenderingData.densitySampler.IsAllocated(chunkIndex))
+                    if (!BrickInBounds(chunkIndex, origin, size) || !ShouldMeshBrick(brickmapRenderingData, chunkIndex))
                         chunks.Remove(chunkIndex);
                 }
 
@@ -227,7 +229,7 @@ namespace LevelGeneration.Terrain
                         {
                             int3 chunkIndex = origin + new int3(x, y, z) - (size / 2);
 
-                            if (!brickmapRenderingData.densitySampler.IsAllocated(chunkIndex))
+                            if (!ShouldMeshBrick(brickmapRenderingData, chunkIndex))
                                 continue;
 
                             if (!chunks.ContainsKey(chunkIndex))
@@ -238,7 +240,6 @@ namespace LevelGeneration.Terrain
                     }
                 }
 
-                debugInfo.numModifiedChunks = brickmapRenderingData.modifiedBricks.Count;
                 debugInfo.numChunks += chunks.Count;
             }
 
@@ -253,83 +254,36 @@ namespace LevelGeneration.Terrain
                 int3 halfMapSize = mapSize / 2;
                 return math.all(brickIndex < originIndex + halfMapSize) && math.all(brickIndex >= originIndex - halfMapSize);
             }
+
+            bool ShouldMeshBrick(BrickmapRenderingData brickmapRenderingData, int3 index) => brickmapRenderingData.allocatedBricks.ContainsKey(index) && brickmapRenderingData.allocatedBricks[index].state == 2;
+
         }
+
+        // TODO: remove rendering data all together? It takes ages to fill the data, an effect which could be achieved by just passing in the brickmap levels.
 
         struct RenderingData
         {
             public BrickmapRenderingData[] brickmapData;
-            public Camera ObserverCamera;
+            public Camera observerCamera;
         }
 
         struct BrickmapRenderingData
         {
-            // Allows the mesher to sample all density levels at this brickmap level via pointers to cached density arrays.
-            public DensitySampler densitySampler;
+            // All loaded bricks.
+            public Dictionary<int3, BrickRenderingData> allocatedBricks;
 
-            // The origin and size of the intended clipmap level.
+            // Bricks modified this frame.
+            public HashSet<int3> modifiedBricks;
+
+            // Origin and size of the intended clipmap level.
             public int3 originIndex;
             public int3 size;
-
-            // Tells the mesher which bricks have been modified and need to be remeshed.
-            public HashSet<int3> modifiedBricks;
-        }
-    }
-
-    /// <summary>
-    /// Provides an interface for mesher jobs to read density data.
-    /// Regions of density data (bricks) can be added to the hash map and sampled via a pointer to the original array.
-    /// </summary>
-    public struct DensitySampler : IDisposable
-    {
-        // Contains the state of loaded bricks. 0 = empty, 1 = full, 2 = partial.
-        NativeHashMap<int3, int> brickStates;
-
-        // Contains pointers allocated density data, only found when the brick state = 2.
-        [NativeDisableUnsafePtrRestriction]
-        NativeHashMap<int3, IntPtr> densityPointers;
-
-        // TODO: ^ convert to single hash map of structs. OR better yet use 0 & 1 pointer to mean empty / full?
-
-        public void Allocate(int size)
-        {
-            brickStates = new(size * size * size, Allocator.Persistent);
-            densityPointers = new(size * size * size, Allocator.Persistent);
         }
 
-        public void Dispose()
+        struct BrickRenderingData
         {
-            brickStates.Dispose();
-            densityPointers.Dispose();
-        }
-
-        public void AddBrick(int3 index) => brickStates.Add(index, 0);
-
-        public void RemoveBrick(int3 index) => brickStates.Remove(index);
-
-        public void SetBrickState(int3 index, int state) => brickStates[index] = state;
-
-        public void AddDensityPtr(int3 index, IntPtr densityPointer) => densityPointers.Add(index, densityPointer);
-
-        public void RemoveDensityPtr(int3 index) => densityPointers.Remove(index);
-
-        public bool IsAllocated(int3 index) => brickStates.ContainsKey(index) && brickStates[index] == 2;
-
-        public unsafe readonly float Sample(int3 globalCellIndex, int brickSize)
-        {
-            // TODO: sample lower brickmap levels if data does not exist for this one.
-
-            int3 brickIndex = (int3)math.floor((double3)globalCellIndex / brickSize); // TODO: find a way to do this without the cast (faster). Also note that casting to a float3 fuks everything up with precision errors.
-
-            // Early return if the brick is completely empty or full.
-            int brickState = brickStates[brickIndex];
-            if (brickState != 2)
-                return math.select(ProceduralTerrain.FullDensityValue, ProceduralTerrain.EmptyDensityValue, brickState == 0);
-
-            int3 localCellIndex = globalCellIndex - (brickIndex * brickSize);
-            int densityIndex = (localCellIndex.z * brickSize * brickSize) + (localCellIndex.y * brickSize) + localCellIndex.x;
-
-            float* ptr = (float*)densityPointers[brickIndex];
-            return *(ptr + densityIndex);
+            public IntPtr densityPtr;
+            public int state;
         }
     }
 }

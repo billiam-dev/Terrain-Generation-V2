@@ -13,6 +13,8 @@ namespace LevelGeneration.Terrain.Meshing
         ChunkMesher[] m_MesherPool;    // The pool of individually allocated ChunkMeshers capable of running meshing JOBs independently.
         List<MeshingTask> m_TaskQueue; // The list of meshing tasks that have been queued by the user.
 
+        public int NumPendingTasks => m_TaskQueue.Count;
+
         const int k_PoolSize = 16;
 
         public void Allocate()

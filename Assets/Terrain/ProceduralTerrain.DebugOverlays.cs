@@ -13,7 +13,6 @@ namespace LevelGeneration.Terrain
 
         public bool EnableLoadedBricks;
         public bool EnableAllocatedBricks;
-        public bool DrawEdgeBricks;
         public bool EnableShapeVolumes;
 
         public bool EnableBrickMapBorders;
@@ -24,8 +23,8 @@ namespace LevelGeneration.Terrain
             Gizmos.matrix = Matrix4x4.identity;
 
             if (EnableShapeVolumes) m_DensityCache.DrawShapeVolumeIndices(BrickmapDebugLevel, m_Scene);
-            if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks(BrickmapDebugLevel, DrawEdgeBricks);
-            if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks(BrickmapDebugLevel, DrawEdgeBricks);
+            if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks(BrickmapDebugLevel);
+            if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks(BrickmapDebugLevel);
             if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelsBounds(BrickmapDebugLevel);
         }
 
@@ -87,28 +86,23 @@ namespace LevelGeneration.Terrain
                     float3 worldBrickSize = brickSize * levelScale * worldScale;
 
                     float3 brickmapLevelCentre = worldBrickSize * originIndex;
-                    float3 brickMapLevelSize = (mapSize - 2) * worldBrickSize;
+                    float3 brickMapLevelSize = mapSize * worldBrickSize;
 
                     Gizmos.color = color;
                     Gizmos.DrawWireCube(brickmapLevelCentre, brickMapLevelSize);
                 }
 
-                public void DrawLoadedBricks(Camera camera, Color color, bool indludeEdges)
+                public void DrawLoadedBricks(Camera camera, Color color)
                 {
                     int3[] loadedBricks = new int3[bricks.Count];
                     bricks.Keys.CopyTo(loadedBricks, 0);
 
                     foreach (int3 brickIndex in loadedBricks)
-                    {
-                        bool isEdgeBrick = BrickOnEdge(brickIndex);
+                        DrawBrick(brickIndex, camera, color, 0.05f);
 
-                        if (!isEdgeBrick || (isEdgeBrick && indludeEdges))
-                            DrawBrick(brickIndex, camera, color, 0.05f);
-                    }
-                        
                 }
 
-                public void DrawAllocatedBricks(Camera camera, Color color, bool indludeEdges)
+                public void DrawAllocatedBricks(Camera camera, Color color)
                 {
                     int3[] allocatedBricks = new int3[numBricksAllocated];
                     int i = 0;
@@ -123,12 +117,7 @@ namespace LevelGeneration.Terrain
                     }
 
                     foreach (int3 brickIndex in allocatedBricks)
-                    {
-                        bool isEdgeBrick = BrickOnEdge(brickIndex);
-
-                        if (!isEdgeBrick || (isEdgeBrick && indludeEdges))
-                            DrawBrick(brickIndex, camera, color, 1.0f);
-                    }
+                        DrawBrick(brickIndex, camera, color, 1.0f);
                 }
 
                 void DrawBrick(int3 brickIndex, Camera camera, Color color, float alphaMultiplier)
@@ -184,33 +173,33 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            public void DrawLoadedBricks(int levelIndex, bool includeEdges)
+            public void DrawLoadedBricks(int levelIndex)
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
 
                 if (levelIndex == -1)
                 {
                     for (int i = 0; i < brickMapLevels.Length; i++)
-                        brickMapLevels[i].DrawLoadedBricks(sceneCamera, k_BrickmapLevelDebugColors[i], includeEdges);
+                        brickMapLevels[i].DrawLoadedBricks(sceneCamera, k_BrickmapLevelDebugColors[i]);
                 }
                 else
                 {
-                    brickMapLevels[levelIndex].DrawLoadedBricks(sceneCamera, k_BrickmapLevelDebugColors[levelIndex], includeEdges);
+                    brickMapLevels[levelIndex].DrawLoadedBricks(sceneCamera, k_BrickmapLevelDebugColors[levelIndex]);
                 }
             }
 
-            public void DrawAllocatedBricks(int levelIndex, bool includeEdges)
+            public void DrawAllocatedBricks(int levelIndex)
             {
                 Camera sceneCamera = SceneView.currentDrawingSceneView.camera;
 
                 if (levelIndex == -1)
                 {
                     for (int i = 0; i < brickMapLevels.Length; i++)
-                        brickMapLevels[i].DrawAllocatedBricks(sceneCamera, k_BrickmapLevelDebugColors[i], includeEdges);
+                        brickMapLevels[i].DrawAllocatedBricks(sceneCamera, k_BrickmapLevelDebugColors[i]);
                 }
                 else
                 {
-                    brickMapLevels[levelIndex].DrawAllocatedBricks(sceneCamera, k_BrickmapLevelDebugColors[levelIndex], includeEdges);
+                    brickMapLevels[levelIndex].DrawAllocatedBricks(sceneCamera, k_BrickmapLevelDebugColors[levelIndex]);
                 }
             }
         }

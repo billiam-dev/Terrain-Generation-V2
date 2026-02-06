@@ -3,7 +3,7 @@ using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.DevTools
+namespace LevelGeneration.Terrain.Tests
 {
     /// <summary>
     /// Demonstration object. Visualy shows how clipmap levels dynamically shift to a given origin.

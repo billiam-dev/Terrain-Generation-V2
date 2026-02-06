@@ -8,7 +8,7 @@ namespace LevelGeneration.Terrain.ShapePainter
     public class ShapePainter : MonoBehaviour
     {
         ShapeBrush[] m_ShapeBrushes;
-        int m_TotalShapeBrushes;
+        int m_NumActiveBrushes;
 
         ProceduralTerrain m_Terrain;
 
@@ -23,17 +23,22 @@ namespace LevelGeneration.Terrain.ShapePainter
                 m_Terrain.ClearShapes();
 
             m_ShapeBrushes = null;
-            m_TotalShapeBrushes = -1;
+            m_NumActiveBrushes = -1;
         }
 
         void Update()
         {
-            // TODO: do this properly.
-
             m_ShapeBrushes = GetComponentsInChildren<ShapeBrush>(true);
 
+            int numActiveBrushes = 0;
+            foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
+            {
+                if (shapeBrush.isActiveAndEnabled)
+                    numActiveBrushes++;
+            }
+
             // Build queue
-            if (m_TotalShapeBrushes != m_ShapeBrushes.Length)
+            if (numActiveBrushes != m_NumActiveBrushes)
             {
                 m_Terrain.ClearShapes();
                 foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
@@ -45,7 +50,7 @@ namespace LevelGeneration.Terrain.ShapePainter
                     }
                 }
 
-                m_TotalShapeBrushes = m_ShapeBrushes.Length;
+                m_NumActiveBrushes = numActiveBrushes;
             }
 
             // Modify Queue

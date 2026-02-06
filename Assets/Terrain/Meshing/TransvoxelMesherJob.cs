@@ -1,8 +1,10 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
@@ -16,12 +18,15 @@ namespace LevelGeneration.Terrain.Meshing
     public struct TransvoxelMesherJob : IJob
     {
         // Input terrain data
-        [ReadOnly] public int clipmapLevel;         // The chunk's clipmap level (idx).
-        [ReadOnly] public int3 chunkIndex;          // Index into the density brick map at this clipmap level.
-        [ReadOnly] public int chunkSize;            // Number of cells per axis in a density chunk.
-        [ReadOnly] public float cellScale;          // World scale of a single cell, determines the scale of the entire terrain.
-        [ReadOnly] public float padding;            // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
-        [ReadOnly] public DensitySampler chunks;    // Terrain density data.
+        [ReadOnly] public int clipmapLevel;           // The chunk's clipmap level (idx).
+        [ReadOnly] public int3 chunkIndex;            // Index into the density brick map at this clipmap level.
+        [ReadOnly] public int chunkSize;              // Number of cells per axis in a density chunk.
+        [ReadOnly] public float cellScale;            // World scale of a single cell, determines the scale of the entire terrain.
+        [ReadOnly] public float padding;              // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
+
+        // Pointer to underlying density data. Points per axis = chunkSize + 3.
+        [ReadOnly, NativeDisableUnsafePtrRestriction]
+        public IntPtr densityPtr;
 
         // Output mesh data
         [NativeDisableParallelForRestriction]
@@ -451,18 +456,15 @@ namespace LevelGeneration.Terrain.Meshing
             return newPoint;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly float SampleDensity(int3 localCellIndex)
+        unsafe readonly float SampleDensity(int3 cellIndex)
         {
-            int3 globalCellIndex = (chunkIndex * chunkSize) + localCellIndex;
-            return chunks.Sample(globalCellIndex, chunkSize);
+            int index = FlattenIndex(cellIndex + 1, chunkSize + 3);
+            float* ptr = (float*)densityPtr;
+
+            return *(ptr + index);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int FlattenIndex(int3 index, int size)
-        {
-            return (index.z * size * size) + (index.y * size) + index.x;
-        }
+        public static int FlattenIndex(int3 index, int size) => (index.z * size * size) + (index.y * size) + index.x;
 
         #endregion
     }
