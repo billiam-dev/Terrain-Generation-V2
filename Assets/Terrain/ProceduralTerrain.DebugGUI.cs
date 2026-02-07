@@ -6,80 +6,90 @@ namespace LevelGeneration.Terrain
     public partial class ProceduralTerrain : MonoBehaviour
     {
         TerrainDebugInfo m_DebugInfo;
+        const float k_SingleLineHeight = 20.0f;
 
         void InitializeDebugGUI()
         {
+            m_DebugInfo = new();
+
             m_DebugInfo.brickSize = k_BrickSize;
             m_DebugInfo.brickmapLevelSize = k_BrickmapLevelSize;
             m_DebugInfo.numBrickmapLevels = k_NumBrickmapLevels;
 
-            m_DebugInfo.densityJobTimes ??= new();
-            //m_DebugInfo.meshingJobTimes ??= new();
+            m_DebugInfo.brickampLevels = new BrickampLevelInfo[k_NumBrickmapLevels];
+            for (int i = 0; i < k_NumBrickmapLevels; i++)
+            {
+                m_DebugInfo.brickampLevels[i] = new();
+
+                m_DebugInfo.brickampLevels[i].level = i;
+                m_DebugInfo.brickampLevels[i].densityJobTimes ??= new();
+            }
         }
 
         void DisplayDebugGUI()
         {
-            m_DebugInfo.DisplayGUI();
+            Rect rect = new(10.0f, 10.0f, 260.0f, k_SingleLineHeight);
+            m_DebugInfo.DisplayGUI(ref rect);
         }
 
-        struct TerrainDebugInfo
+        class TerrainDebugInfo
         {
             public int brickSize;
             public int brickmapLevelSize;
             public int numBrickmapLevels;
 
-            public int shapeCount;
+            public int numShapesInScene;
 
-            public int numBricksLoaded;
-            public int numBricksAllocated;
-            public int numBricksModified;
-            public int numDensityJOBs;
-            public double bricksEvaluationTime;
-            public MeanTime densityJobTimes;
-            public double brickmapUpdateTime;
+            public BrickampLevelInfo[] brickampLevels;
 
             public int numChunks;
             public int numChunkRendererd;
             public int numRemeshTasks;
             public double remeshTaskTime;
-            //public MeanTime meshingJobTimes; // TODO
             public double clipmapUpdateTime;
             public double clipmapRenderingTime;
 
-            const float k_SingleLineHeight = 20.0f;
-
-            public readonly void DisplayGUI()
+            public void DisplayGUI(ref Rect rect)
             {
-                Rect rect = new(10.0f, 10.0f, 260.0f, k_SingleLineHeight);
-
                 int extBrickSize = brickSize + 3;
                 int cellsPerBrick = extBrickSize * extBrickSize * extBrickSize;
-                int brickMapMemoryUsageBytes = numBricksAllocated * cellsPerBrick * sizeof(float);
-                double totalFrameTime = brickmapUpdateTime + clipmapUpdateTime + clipmapRenderingTime;
+
+                int totalBricksLoaded = 0;
+                int totalBricksAllocated = 0;
+                double totalBrickmapUpdateTime = 0.0;
+
+                foreach (BrickampLevelInfo brickmapLevel in brickampLevels)
+                {
+                    totalBricksLoaded += brickmapLevel.numBricksLoaded;
+                    totalBricksAllocated += brickmapLevel.numBricksAllocated;
+                    totalBrickmapUpdateTime += brickmapLevel.updateTime;
+                }
+
+                int totalBrickmapMemoryUsage = totalBricksAllocated * cellsPerBrick * sizeof(float); // (bytes)
+                double totalFrameTime = totalBrickmapUpdateTime + clipmapUpdateTime + clipmapRenderingTime;
                 int fps = (int)math.floor(1.0 / totalFrameTime);
 
-                // Constants
-                GUI.Label(rect, $"Brick Size: {brickSize} (Cells per brick: {cellsPerBrick})");
+                // Scene info
+                GUI.Label(rect, $"Shapes in scene: {numShapesInScene}");
+                rect.y += k_SingleLineHeight * 2.0f;
+
+                // Density cache info
+                GUI.Label(rect, $"Brick Size: {brickSize} (+3) (Cells per brick: {cellsPerBrick})");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Brickmap Level Size: {brickmapLevelSize}");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Num brickmap levels: {numBrickmapLevels}");
                 rect.y += k_SingleLineHeight * 2.0f;
 
-                // Scene info
-                GUI.Label(rect, $"Shapes in scene: {shapeCount}");
+                foreach (BrickampLevelInfo brickmapLevel in brickampLevels)
+                    brickmapLevel.DisplayGUI(ref rect);
                 rect.y += k_SingleLineHeight * 2.0f;
 
-                // Density cache info
-                GUI.Label(rect, $"Total loaded bricks: {numBricksLoaded}");
+                GUI.Label(rect, $"Total loaded bricks: {totalBricksLoaded}");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Total allocated bricks: {numBricksAllocated} ({brickMapMemoryUsageBytes / 1024}kb)");
+                GUI.Label(rect, $"Total allocated bricks: {totalBricksAllocated} ({totalBrickmapMemoryUsage / 1024}kb)");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Total recomputed bricks: {numBricksModified} ({Stopwatch.ToMilliseconds(bricksEvaluationTime)}ms)");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Avg density JOB time: {Stopwatch.ToMilliseconds(densityJobTimes.Avarage())}ms");
-                rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"Brickmap update time: {Stopwatch.ToMilliseconds(brickmapUpdateTime)}ms");
+                GUI.Label(rect, $"Total brickmap update time: {Stopwatch.ToMilliseconds(totalBrickmapUpdateTime)}ms");
                 rect.y += k_SingleLineHeight * 2.0f;
 
                 // Rendering info
@@ -88,8 +98,6 @@ namespace LevelGeneration.Terrain
                 GUI.Label(rect, $"Drawing chunks: {numChunkRendererd}");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Num remesh tasks: {numRemeshTasks} ({Stopwatch.ToMilliseconds(remeshTaskTime)}ms)");
-                //rect.y += k_SingleLineHeight;
-                //GUI.Label(rect, $"Avg mesher JOB time: {Stopwatch.ToMilliseconds(meshingJobTimes.Avarage())}ms");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"Clipmap update time: {Stopwatch.ToMilliseconds(clipmapUpdateTime)}ms");
                 rect.y += k_SingleLineHeight;
@@ -97,6 +105,38 @@ namespace LevelGeneration.Terrain
                 rect.y += k_SingleLineHeight * 2.0f;
 
                 GUI.Label(rect, $"Total frame time: {Stopwatch.ToMilliseconds(totalFrameTime)}ms ({fps}fps)");
+            }
+        }
+
+        class BrickampLevelInfo
+        {
+            public int level;
+
+            public int numShapes;
+
+            public int numBricksLoaded;
+            public int numBricksAllocated;
+            
+            public int numBricksModified;
+            public int numDensityJobs;
+            public double evaluationTime;
+            public MeanTime densityJobTimes;
+            
+            public double updateTime;
+
+            public void DisplayGUI(ref Rect rect)
+            {
+                GUI.Label(rect, $"Level: {level}");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Num shapes: {numShapes}");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Total loaded bricks: {numBricksLoaded} ({numBricksAllocated} allocated)");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Total recomputed bricks: {numBricksModified} ({Stopwatch.ToMilliseconds(evaluationTime)}ms)");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Avg density JOB time: {Stopwatch.ToMilliseconds(densityJobTimes.Avarage())}ms");
+                rect.y += k_SingleLineHeight;
+                GUI.Label(rect, $"Brickmap update time: {Stopwatch.ToMilliseconds(updateTime)}ms");
             }
         }
     }

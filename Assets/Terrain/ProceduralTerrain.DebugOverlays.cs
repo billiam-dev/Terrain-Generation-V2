@@ -22,7 +22,7 @@ namespace LevelGeneration.Terrain
         {
             Gizmos.matrix = Matrix4x4.identity;
 
-            if (EnableShapeVolumes) m_DensityCache.DrawShapeVolumeIndices(BrickmapDebugLevel, m_Scene);
+            if (EnableShapeVolumes) m_DensityCache.DrawShapeVolumeIndices(BrickmapDebugLevel);
             if (EnableLoadedBricks) m_DensityCache.DrawLoadedBricks(BrickmapDebugLevel);
             if (EnableAllocatedBricks) m_DensityCache.DrawAllocatedBricks(BrickmapDebugLevel);
             if (EnableBrickMapBorders) m_DensityCache.DrawMapLevelsBounds(BrickmapDebugLevel);
@@ -54,11 +54,11 @@ namespace LevelGeneration.Terrain
         {
             partial class SparseBrickMap
             {
-                public void DrawShapeVolumeIndices(SDFScene scene)
+                public void DrawShapeVolumeIndices()
                 {
                     HashSet<int3> bricksInShapeVolumes = new();
 
-                    foreach (Shape shape in scene.Shapes)
+                    foreach (Shape shape in shapes)
                     {
                         shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                         GetBrickVolumeFromAABB( boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
@@ -147,16 +147,16 @@ namespace LevelGeneration.Terrain
                 new(0.1f, 0.1f, 0.1f, 0.1f)
             };
 
-            public void DrawShapeVolumeIndices(int levelIndex, SDFScene scene)
+            public void DrawShapeVolumeIndices(int levelIndex)
             {
                 if (levelIndex == -1)
                 {
                     for (int i = 0; i < brickMapLevels.Length; i++)
-                        brickMapLevels[i].DrawShapeVolumeIndices(scene);
+                        brickMapLevels[i].DrawShapeVolumeIndices();
                 }
                 else
                 {
-                    brickMapLevels[levelIndex].DrawShapeVolumeIndices(scene);
+                    brickMapLevels[levelIndex].DrawShapeVolumeIndices();
                 }
             }
 

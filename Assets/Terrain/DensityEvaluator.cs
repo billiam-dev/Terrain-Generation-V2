@@ -37,7 +37,7 @@ namespace LevelGeneration.Terrain
             m_NegativeValueFound.Dispose();
         }
 
-        public DensityEvaluationResult ExecuteJob(NativeList<Shape> shapes, int3 brickIndex, int brickSize, float terrainScale, int levelScale)
+        public DensityEvaluationResult ExecuteJob(NativeArray<Shape> shapes, int3 brickIndex, int brickSize, float terrainScale, int levelScale)
         {
             m_PositiveValueFound.Value = false;
             m_NegativeValueFound.Value = false;
@@ -69,7 +69,7 @@ namespace LevelGeneration.Terrain
         [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct DensityJob : IJobFor
         {
-            [ReadOnly] public NativeList<Shape> shapes;
+            [ReadOnly] public NativeArray<Shape> shapes;
             [ReadOnly] public float initialValue;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
@@ -102,8 +102,7 @@ namespace LevelGeneration.Terrain
                 int3 itterationIndex = new(x, y, z);
 
                 // Derrive world position from iteration index.
-                int3 globalCellIndex = ((brickIndex * brickSize) + (itterationIndex - 1)) * levelScale;
-                float3 worldPosition = (float3)globalCellIndex * terrainScale;
+                float3 worldPosition = levelScale * terrainScale * (float3)((brickIndex * brickSize) + (itterationIndex - 1));
 
                 // Apply shapes.
                 float3 translatedPosition;
@@ -137,7 +136,7 @@ namespace LevelGeneration.Terrain
                 density[index] = newDensity;
 
                 // Update positive / negative value flags, both in bounds and out of bounds values are considered in this check.
-                if (math.all(itterationIndex > 0) && math.all(itterationIndex <= brickSize + 1)) // TODO: use int index to avoid math.all()
+                if (math.all(itterationIndex > 0) && math.all(itterationIndex <= brickSize + 1))
                 {
                     if (newDensity > 0)
                     {
@@ -232,7 +231,7 @@ namespace LevelGeneration.Terrain
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static float3 FastMul(AffineTransform a, float3 pos)
             {
-                return math.mul(a.rs, pos.xyz) + a.t;
+                return math.mul(a.rs, pos) + a.t;
             }
         }
     }
