@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
@@ -9,7 +11,7 @@ namespace LevelGeneration.Terrain
 {
     public class DensityEvaluator : IDisposable
     {
-        NativeArray<float> m_WorkingDensityData;
+        NativeArray<float> m_DensityData;
         NativeReference<bool> m_PositiveValueFound;
         NativeReference<bool> m_NegativeValueFound;
 
@@ -24,7 +26,7 @@ namespace LevelGeneration.Terrain
             m_DensityDataSize = brickSize + 3;
             m_DensityDataPoints = m_DensityDataSize * m_DensityDataSize * m_DensityDataSize;
 
-            m_WorkingDensityData = new(m_DensityDataSize * m_DensityDataSize * m_DensityDataSize, Allocator.Persistent);
+            m_DensityData = new(m_DensityDataSize * m_DensityDataSize * m_DensityDataSize, Allocator.Persistent);
 
             m_PositiveValueFound = new(Allocator.Persistent);
             m_NegativeValueFound = new(Allocator.Persistent);
@@ -32,26 +34,40 @@ namespace LevelGeneration.Terrain
 
         public void Dispose()
         {
-            m_WorkingDensityData.Dispose();
+            m_DensityData.Dispose();
             m_PositiveValueFound.Dispose();
             m_NegativeValueFound.Dispose();
         }
 
-        public DensityEvaluationResult ExecuteJob(NativeArray<Shape> shapes, int3 brickIndex, int brickSize, float terrainScale, int levelScale)
+        public DensityEvaluationResult Execute(List<Shape> shapes, int3 brickIndex, int brickSize, int levelScale, float worldScale)
         {
+            int numShapes = shapes.Count;
+            NativeArray<SDF> distanceFunctions = new(numShapes, Allocator.TempJob);
+
+            for (int i = 0; i < numShapes; i++)
+            {
+                distanceFunctions[i] = new SDF(
+                    shapes[i].inverseMatrix,
+                    (uint)shapes[i].distanceFunction,
+                    shapes[i].blendMode == BlendMode.Subtractive,
+                    shapes[i].smoothness * 6.0f, // Multiply smoothness by 6 as the first step to the cubic polynomial smooth min / max functions.
+                    new float3(shapes[i].dimention1, shapes[i].dimention2, shapes[i].dimention3)
+                );
+            }
+
             m_PositiveValueFound.Value = false;
             m_NegativeValueFound.Value = false;
 
             DensityJob job = new()
             {
-                shapes = shapes,
+                distanceFunctions = distanceFunctions,
                 initialValue = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 extendedBrickSize = m_DensityDataSize,
-                terrainScale = terrainScale,
                 levelScale = levelScale,
-                density = m_WorkingDensityData,
+                worldScale = worldScale,
+                density = m_DensityData,
                 positiveValueFound = m_PositiveValueFound,
                 negativeValueFound = m_NegativeValueFound
             };
@@ -60,24 +76,26 @@ namespace LevelGeneration.Terrain
             job.ScheduleParallel(m_DensityDataPoints, k_InnerloopBatchCount, default).Complete();
             Stopwatch.End(ref m_ExecutionTime);
 
+            distanceFunctions.Dispose();
+
             bool isEmpty = m_PositiveValueFound.Value && !m_NegativeValueFound.Value;
             bool isFull = m_NegativeValueFound.Value && !m_PositiveValueFound.Value;
 
-            return new DensityEvaluationResult(m_WorkingDensityData, isEmpty, isFull, m_ExecutionTime);
+            return new DensityEvaluationResult(m_DensityData, isEmpty || isFull, m_ExecutionTime);
         }
 
         [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct DensityJob : IJobFor
         {
-            [ReadOnly] public NativeArray<Shape> shapes;
+            [ReadOnly] public NativeArray<SDF> distanceFunctions;
             [ReadOnly] public float initialValue;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
             [ReadOnly] public int extendedBrickSize;
-            [ReadOnly] public float terrainScale;
+            [ReadOnly] public float worldScale;
             [ReadOnly] public int levelScale;
 
-            [WriteOnly, NativeDisableParallelForRestriction]
+            [WriteOnly]
             public NativeArray<float> density;
 
             [NativeDisableParallelForRestriction]
@@ -88,8 +106,6 @@ namespace LevelGeneration.Terrain
 
             public void Execute(int index)
             {
-                float newDensity = initialValue;
-
                 // Unwrap the iteration index into a 3D index using the extended brick size.
                 int x = index;
 
@@ -99,44 +115,65 @@ namespace LevelGeneration.Terrain
                 int y = x / extendedBrickSize;
                 x -= y * extendedBrickSize;
 
-                int3 itterationIndex = new(x, y, z);
+                int3 coord = new(x, y, z);
 
                 // Derrive world position from iteration index.
-                float3 worldPosition = levelScale * terrainScale * (float3)((brickIndex * brickSize) + (itterationIndex - 1));
+                float3 worldPosition = levelScale * worldScale * (float3)((brickIndex * brickSize) + (coord - 1));
 
-                // Apply shapes.
+                // Apply distance functions.
+                float newDensity = initialValue;
+                
                 float3 translatedPosition;
                 float distance;
 
-                foreach (Shape shape in shapes)
+                foreach (SDF sdf in distanceFunctions)
                 {
                     // Get a translated position using the shape's inverse matrix (worldToLocal).
-                    translatedPosition = FastMul(shape.inverseMatrix, worldPosition);
+                    translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
+
+                    // Special case for noise.
+                    if (sdf.functionID == 6)
+                    {
+                        newDensity += Noise(translatedPosition, sdf.dimentions.x, sdf.dimentions.y);
+                        continue;
+                    }
 
                     // Calculate the distance value using the SDF function of the current shape.
-                    distance = shape.distanceFunction switch
+                    distance = sdf.functionID switch
                     {
-                        DistanceFunction.Sphere => Sphere(translatedPosition, shape.dimention1),
-                        DistanceFunction.SemiSphere => SemiSphere(translatedPosition, shape.dimention1, shape.dimention2),
-                        DistanceFunction.Capsule => Capsule(translatedPosition, shape.dimention1, shape.dimention2),
-                        DistanceFunction.Torus => Torus(translatedPosition, shape.dimention1, shape.dimention2),
-                        DistanceFunction.Cube => Cube(translatedPosition, shape.dimention1, shape.dimention2, shape.dimention3),
-                        _ => 0,
+                        0 => Sphere(translatedPosition, sdf.dimentions.x),
+                        1 => SemiSphere(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                        2 => Capsule(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                        3 => Torus(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                        4 => Cube(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, sdf.dimentions.z),
+                        5 => Surface(translatedPosition),
+                        _ => 0
                     };
 
                     // Mix the old and new distance values using a smoothing function.
-                    newDensity = math.select(
-                        SmoothMin(newDensity, distance, shape.smoothnessConstant),
-                        SmoothMax(newDensity, distance, shape.smoothnessConstant),
-                        shape.blendMode == BlendMode.Subtractive
-                        );
+                    // Optional optimization here; only use expensive smooth min/max functions for the highest LOD. TODO: Convert into separate kernals to avoid branch.
+                    if (levelScale > 1)
+                    {
+                        newDensity = math.select(
+                            math.min(newDensity, distance),
+                            -math.min(-newDensity, distance),
+                            sdf.isSubtractive
+                            );
+                    }
+                    else
+                    {
+                        newDensity = math.select(
+                            SmoothMin(newDensity, distance, sdf.smoothness),
+                            SmoothMax(newDensity, distance, sdf.smoothness),
+                            sdf.isSubtractive
+                            );
+                    }
                 }
 
-                // If the cell is in bounds of the density array, update the density array.
                 density[index] = newDensity;
 
-                // Update positive / negative value flags, both in bounds and out of bounds values are considered in this check.
-                if (math.all(itterationIndex > 0) && math.all(itterationIndex <= brickSize + 1))
+                // Update positive / negative value flags.
+                if (math.all(coord > 0) && math.all(coord <= brickSize + 2))
                 {
                     if (newDensity > 0)
                     {
@@ -201,6 +238,26 @@ namespace LevelGeneration.Terrain
                 return math.length(math.max(q, 0.0f)) + math.min(math.max(q.x, math.max(q.y, q.z)), 0.0f);
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static float Surface(float3 pos)
+            {
+                return pos.y;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static float Noise(float3 pos, float frequency, float amplitude)
+            {
+                float n = 0.0f;
+                for (int i = 0; i < 3; i++)
+                {
+                    n += SimplexNoise.snoise(pos * frequency) * amplitude;
+                    frequency *= 0.5f;
+                    amplitude *= 0.5f;
+                }
+
+                return n;
+            }
+
             /*
              * Smoothing functions
              *
@@ -214,7 +271,7 @@ namespace LevelGeneration.Terrain
             public static float SmoothMax(float a, float b, float k)
             {
                 float h = math.max(k - math.abs(-a + b), 0.0f) / k;
-                return -(math.min(-a, -b) - h * h * h * k * OneOverSix);
+                return -(math.min(-a, b) - h * h * h * k * OneOverSix);
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -223,50 +280,37 @@ namespace LevelGeneration.Terrain
                 float h = math.max(k - math.abs(a - b), 0.0f) / k;
                 return math.min(a, b) - h * h * h * k * OneOverSix;
             }
+        }
 
-            /*
-             * Fast multiply function, same as math.mul for AffineTransforms but without the w component.
-            */
+        readonly struct SDF
+        {
+            public readonly AffineTransform inverseMatrix;
+            public readonly uint functionID;
+            public readonly bool isSubtractive;
+            public readonly float smoothness;
+            public readonly float3 dimentions;
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static float3 FastMul(AffineTransform a, float3 pos)
+            public SDF(AffineTransform inverseMatrix, uint functionID, bool isSubtractive, float smoothness, float3 dimentions)
             {
-                return math.mul(a.rs, pos) + a.t;
+                this.inverseMatrix = inverseMatrix;
+                this.functionID = functionID;
+                this.isSubtractive = isSubtractive;
+                this.smoothness = smoothness;
+                this.dimentions = dimentions;
             }
         }
     }
 
     public readonly struct DensityEvaluationResult
     {
-        enum State
-        {
-            Empty = 0,
-            Full = 1,
-            Partial = 2,
-            Error = 3
-        }
+        public readonly NativeArray<float> density;
+        public readonly bool isUniformState;
+        public readonly double executionTime;
 
-        readonly NativeArray<float> density;
-        readonly State state;
-        readonly double executionTime;
-
-        public readonly NativeArray<float> Density => density;
-        public readonly int DensityState => (int)state;
-        public readonly double ExecutionTime => executionTime;
-
-        public DensityEvaluationResult(NativeArray<float> density, bool isEmpty, bool isFull, double executionTime)
+        public DensityEvaluationResult(NativeArray<float> density, bool isUniformState, double executionTime)
         {
             this.density = density;
-
-            if (!isEmpty && !isFull)
-                state = State.Partial;
-            else if (isEmpty)
-                state = State.Empty;
-            else if (isFull)
-                state = State.Full;
-            else
-                state = State.Error;
-
+            this.isUniformState = isUniformState;
             this.executionTime = executionTime;
         }
     }

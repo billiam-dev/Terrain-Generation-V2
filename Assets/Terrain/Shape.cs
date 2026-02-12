@@ -5,7 +5,7 @@ namespace LevelGeneration.Terrain
     /// <summary>
     /// Readonly shape struct which can be passed to jobs.
     /// </summary>
-    public readonly struct Shape
+    public class Shape
     {
         public readonly AffineTransform matrix;
         public readonly AffineTransform inverseMatrix;
@@ -13,11 +13,14 @@ namespace LevelGeneration.Terrain
         public readonly DistanceFunction distanceFunction;
         public readonly BlendMode blendMode;
         public readonly float smoothness;
-        public readonly float smoothnessConstant;
 
         public readonly float dimention1;
         public readonly float dimention2;
         public readonly float dimention3;
+
+        // Multiplier for how much the smoothness value should extend the brick volume effected by this shape.
+        // Larger values result in a larger volume allowing for smoothing over larger distances at the expense of speed.
+        const float k_SmoothnessVolumeExtentConstant = 4.0f;
 
         public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1, float dimention2, float dimention3)
         {
@@ -28,23 +31,15 @@ namespace LevelGeneration.Terrain
             this.blendMode = blendMode;
             this.smoothness = smoothness;
 
-            // The first step of the cubic polynomial smooth min and max methods is to multiply the smoothness value by 6.
-            // As a small optimization for speed, that is done on shape creation, rather than inside of the loop.
-            smoothnessConstant = smoothness * 6.0f;
-
             this.dimention1 = dimention1;
             this.dimention2 = dimention2;
             this.dimention3 = dimention3;
         }
 
-        // Multiplier for how much the smoothness value should extend the brick volume effected by this shape.
-        // Larger values result in a larger volume allowing for smoothing over larger distances at the expense of speed.
-        const float k_SmoothnessVolumeExtentConstant = 4.0f;
-
         /// <summary>
         /// Compute a world space AABB for the shape.
         /// </summary>
-        public readonly void ComputeVolume(out float3 position, out float3 volume)
+        public void ComputeVolume(out float3 position, out float3 volume)
         {
             // Compute an accurate bounding volume for the shape in world space.
             float3 boundsVolume = 0;
@@ -61,9 +56,14 @@ namespace LevelGeneration.Terrain
                     break;
 
                 case DistanceFunction.Cube:
+                case DistanceFunction.Surface:
                     boundsVolume.x = dimention1 * 2.0f;
                     boundsVolume.y = dimention2 * 2.0f;
                     boundsVolume.z = dimention3 * 2.0f;
+                    break;
+
+                case DistanceFunction.Noise:
+                    boundsVolume = 512;
                     break;
             }
 
@@ -113,11 +113,6 @@ namespace LevelGeneration.Terrain
             volume = boundsVolume;
             position = matrix.t;
         }
-
-        public bool IsNull()
-        {
-            return dimention1 == 0 && dimention2 == 0 && dimention3 == 0;
-        }
     }
 
     public enum DistanceFunction
@@ -126,7 +121,9 @@ namespace LevelGeneration.Terrain
         SemiSphere = 1,
         Capsule    = 2,
         Torus      = 3,
-        Cube       = 4
+        Cube       = 4,
+        Surface    = 5,
+        Noise      = 6
     }
 
     public enum BlendMode

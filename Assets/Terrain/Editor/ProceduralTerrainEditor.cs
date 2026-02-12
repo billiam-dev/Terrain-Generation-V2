@@ -9,39 +9,27 @@ namespace LevelGeneration.Terrain
     {
         // Properties
         SerializedProperty m_Material;
-
-        SerializedProperty m_BrickmapDebugLevel;
+        SerializedProperty m_ForceMainCamera;
+        SerializedProperty m_UseStaticOrigin;
         
-        SerializedProperty m_EnableLoadedBricks;
-        SerializedProperty m_EnableAllocatedBricks;
-        SerializedProperty m_EnableShapeVolumes;
+        SerializedProperty m_DrawBrickmapBorders;
+        SerializedProperty m_DrawBricks;
+        SerializedProperty m_DrawShapeVolumes;
 
-        SerializedProperty m_EnableBrickMapBorders;
-        SerializedProperty m_DetachCamera;
-
-        SerializedProperty m_EnableDensitySampler;
-        SerializedProperty m_DensitySamplerPosition;
-
-        SerializedProperty m_DisableRendering;
-        SerializedProperty m_ColorClipmapLevels;
+        SerializedProperty m_EnableDensityTester;
+        SerializedProperty m_DensityTesterPosition;
 
         // GUI Contents
         GUIContent m_MaterialGUI;
+        GUIContent m_ForceMainCameraGUI;
+        GUIContent m_UseStaticOriginGUI;
         
-        GUIContent m_BrickmapDebugLevelGUI;
-        
-        GUIContent m_EnableLoadedBricksGUI;
-        GUIContent m_EnableAllocatedBricksGUI;
-        GUIContent m_EnableShapeVolumesGUI;
+        GUIContent m_DrawBrickmapBordersGUI;
+        GUIContent m_DrawBricksGUI;
+        GUIContent m_DrawShapeVolumesGUI;
 
-        GUIContent m_EnableBrickMapBordersGUI;
-        GUIContent m_DetachCameraFromOriginGUI;
-        
-        GUIContent m_EnableDensitySamplerGUI;
-        GUIContent m_DensitySamplerPositionGUI;
-
-        GUIContent m_DisableRenderingGUI;
-        GUIContent m_ColorClipmapLevelsGUI;
+        GUIContent m_EnableDensityTesterGUI;
+        GUIContent m_DensityTesterPositionGUI;
 
         ProceduralTerrain m_Target;
 
@@ -50,37 +38,26 @@ namespace LevelGeneration.Terrain
             var o = new PropertyFetcher<ProceduralTerrain>(serializedObject);
 
             m_Material = o.Find(x => x.Material);
-            
-            m_BrickmapDebugLevel = o.Find(x => x.BrickmapDebugLevel);
-            m_EnableLoadedBricks = o.Find(x => x.EnableLoadedBricks);
-            m_EnableAllocatedBricks = o.Find(x => x.EnableAllocatedBricks);
-            m_EnableShapeVolumes = o.Find(x => x.EnableShapeVolumes);
-            
-            m_EnableBrickMapBorders = o.Find(x => x.EnableBrickMapBorders);
-            m_DetachCamera = o.Find(x => x.DetachCamera);
-            
-            m_EnableDensitySampler = o.Find(x => x.EnableDensitySampler);
-            m_DensitySamplerPosition = o.Find(x => x.DensitySamplerPosition);
+            m_ForceMainCamera = o.Find(x => x.ForceMainCamera);
+            m_UseStaticOrigin = o.Find(x => x.UseStaticOrigin);
 
-            m_DisableRendering = o.Find(x => x.DisableRendering);
-            m_ColorClipmapLevels = o.Find(x => x.ColorClipmapLevels);
+            m_DrawBrickmapBorders = o.Find(x => x.m_DrawBrickmapBorders);
+            m_DrawBricks = o.Find(x => x.m_DrawBricks);
+            m_DrawShapeVolumes = o.Find(x => x.m_DrawShapeVolumes);
+
+            m_EnableDensityTester = o.Find(x => x.m_EnableDensityTester);
+            m_DensityTesterPosition = o.Find(x => x.m_DensityTesterPosition);
 
             m_MaterialGUI = new GUIContent("Material");
+            m_ForceMainCameraGUI = new GUIContent("Force Use Main Camera");
+            m_UseStaticOriginGUI = new GUIContent("Use Static Origin");
 
-            m_BrickmapDebugLevelGUI = new GUIContent("Level");
-            
-            m_EnableLoadedBricksGUI = new GUIContent("Loaded Bricks");
-            m_EnableAllocatedBricksGUI = new GUIContent("Allocated Bricks");
-            m_EnableShapeVolumesGUI = new GUIContent("Shape Volumes");
+            m_DrawBrickmapBordersGUI = new GUIContent("Brickmap Bounds");
+            m_DrawBricksGUI = new GUIContent("Bricks");
+            m_DrawShapeVolumesGUI = new GUIContent("Shape Volumes");
 
-            m_EnableBrickMapBordersGUI = new GUIContent("Brickmap Bounds");
-            m_DetachCameraFromOriginGUI = new GUIContent("Detatch Camera");
-            
-            m_EnableDensitySamplerGUI = new GUIContent("Enable Density Sampler");
-            m_DensitySamplerPositionGUI = new GUIContent("Position");
-
-            m_DisableRenderingGUI = new GUIContent("Disable Rendering");
-            m_ColorClipmapLevelsGUI = new GUIContent("Highlight Clipmap Levels");
+            m_EnableDensityTesterGUI = new GUIContent("Enable Density Tester");
+            m_DensityTesterPositionGUI = new GUIContent("Position");
 
             m_Target = (ProceduralTerrain)target;
         }
@@ -90,50 +67,41 @@ namespace LevelGeneration.Terrain
             serializedObject.Update();
 
             EditorGUILayout.PropertyField(m_Material, m_MaterialGUI);
+            EditorGUILayout.PropertyField(m_ForceMainCamera, m_ForceMainCameraGUI);
+            EditorGUILayout.PropertyField(m_UseStaticOrigin, m_UseStaticOriginGUI);
 
             EditorGUILayout.LabelField("Debug Options (Editor only)", EditorStyles.boldLabel);
 
-            EditorGUILayout.PropertyField(m_EnableBrickMapBorders, m_EnableBrickMapBordersGUI);
-            EditorGUILayout.PropertyField(m_DetachCamera, m_DetachCameraFromOriginGUI);
-
-            EditorGUILayout.PropertyField(m_BrickmapDebugLevel, m_BrickmapDebugLevelGUI);
+            EditorGUILayout.PropertyField(m_DrawBrickmapBorders, m_DrawBrickmapBordersGUI);
+            EditorGUILayout.PropertyField(m_DrawBricks, m_DrawBricksGUI);
+            EditorGUILayout.PropertyField(m_DrawShapeVolumes, m_DrawShapeVolumesGUI);
             
-            EditorGUI.indentLevel++;
-            EditorGUILayout.PropertyField(m_EnableLoadedBricks, m_EnableLoadedBricksGUI);
-            EditorGUILayout.PropertyField(m_EnableAllocatedBricks, m_EnableAllocatedBricksGUI);
-            EditorGUILayout.PropertyField(m_EnableShapeVolumes, m_EnableShapeVolumesGUI);
-
-            EditorGUILayout.PropertyField(m_EnableDensitySampler, m_EnableDensitySamplerGUI);
-            if (m_EnableDensitySampler.boolValue)
+            EditorGUILayout.PropertyField(m_EnableDensityTester, m_EnableDensityTesterGUI);
+            if (m_EnableDensityTester.boolValue)
             {
                 EditorGUI.indentLevel++;
-                EditorGUILayout.PropertyField(m_DensitySamplerPosition, m_DensitySamplerPositionGUI);
+                EditorGUILayout.PropertyField(m_DensityTesterPosition, m_DensityTesterPositionGUI);
                 EditorGUI.indentLevel--;
             }
-
-            EditorGUI.indentLevel--;
-
-            EditorGUILayout.PropertyField(m_DisableRendering, m_DisableRenderingGUI);
-            EditorGUILayout.PropertyField(m_ColorClipmapLevels, m_ColorClipmapLevelsGUI);
 
             serializedObject.ApplyModifiedProperties();
         }
 
         void OnSceneGUI()
         {
-            if (m_EnableDensitySampler.boolValue) DrawDensitySamplerHandle();
+            if (m_EnableDensityTester.boolValue) DrawDensitySamplerHandle();
         }
 
         void DrawDensitySamplerHandle()
         {
-            Vector3 position = m_Target.DensitySamplerPosition;
+            Vector3 position = m_Target.m_DensityTesterPosition;
 
             EditorGUI.BeginChangeCheck();
             Vector3 newPosition = Handles.PositionHandle(position, Quaternion.identity);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(target, "Change Density Sampler Position");
-                m_Target.DensitySamplerPosition = newPosition;
+                m_Target.m_DensityTesterPosition = newPosition;
             }
         }
     }

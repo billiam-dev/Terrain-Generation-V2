@@ -42,7 +42,7 @@ namespace LevelGeneration.Terrain.Tests
             switch (testMode)
             {
                 case Test.SphereGrid:
-                    int gridSize = 4;
+                    int gridSize = 8;
                     float separation = 64.0f;
                     float sphereSize = 8.0f;
 
@@ -52,10 +52,11 @@ namespace LevelGeneration.Terrain.Tests
                         {
                             for (int z = 0; z < gridSize; z++)
                             {
-                                int3 idx = new(x, y, z);
-                                float3 pos = ((float3)idx - (gridSize / 2)) * separation;
+                                float3 pos = new(x, y, z);
+                                pos -= gridSize / 2.0f - 0.5f;
+                                pos *= separation;
 
-                                m_Terrain.AddShape(new Shape(pos, new quaternion(0, 0, 0, 0), new float3(1, 1, 1), DistanceFunction.Sphere, BlendMode.Additive, 1.0f, sphereSize, 0.0f, 0.0f));
+                                m_Terrain.AddShape(new Shape(pos, quaternion.identity, 1.0f, DistanceFunction.Sphere, BlendMode.Additive, 1.0f, sphereSize, 0.0f, 0.0f));
                             }
                         }
                     }

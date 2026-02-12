@@ -24,7 +24,7 @@ namespace LevelGeneration.Terrain.Meshing
         MeshingTask m_CurrentTask;
         bool m_HasTask;
 
-        const int k_InitialArrayCapacity = 512;
+        const int k_InitialArrayCapacity = 61440; // cellsPerBrick (4096) x maxTrianglesPerCell (5) x verticesPerTriangle (3)
 
         const MeshUpdateFlags k_UpdateFlags =
               MeshUpdateFlags.DontNotifyMeshUsers
@@ -51,8 +51,7 @@ namespace LevelGeneration.Terrain.Meshing
         /// </summary>
         public void ScheduleAndCompleteTask(MeshingTask meshingTask)
         {
-            JobHandle job = ScheduleTask(meshingTask);
-            job.Complete();
+            ScheduleTask(meshingTask).Complete();
             CompleteTask();
         }
 
@@ -75,11 +74,10 @@ namespace LevelGeneration.Terrain.Meshing
 
             TransvoxelMesherJob mesherJob = new()
             {
-                clipmapLevel = meshingTask.clipmapLevel,
                 chunkIndex = meshingTask.chunkIndex,
                 chunkSize = meshingTask.chunkSize,
-                cellScale = meshingTask.worldScale,
-                padding = meshingTask.transitionCellPadding,
+                levelScale = meshingTask.levelScale,
+                worldScale = meshingTask.worldScale,
                 densityPtr = meshingTask.densityPtr,
                 vertices = m_Vertices,
                 indices = m_Indices,
@@ -114,7 +112,7 @@ namespace LevelGeneration.Terrain.Meshing
             NativeArray<Vertex> vertices = m_Vertices.ToArray(Allocator.Temp);
             NativeArray<ushort> indices = m_Indices.ToArray(Allocator.Temp);
 
-            // Early return if vertices & indices come back empty.
+            // Early return if vertices or indices come back empty.
             if (vertices.Length < 2 || indices.Length < 2)
             {
                 mesh.Clear();
@@ -139,7 +137,6 @@ namespace LevelGeneration.Terrain.Meshing
             int verticesEnd;
             int indicesEnd;
 
-            // Update base mesh
             if (transitionMeshes != null)
             {
                 numVertices = m_MeshStartIndices[0].x;
@@ -151,6 +148,7 @@ namespace LevelGeneration.Terrain.Meshing
                 numIndices = indices.Length;
             }
 
+            // Update base mesh
             mesh.SetVertexBufferParams(numVertices, Vertex.Format);
             mesh.SetVertexBufferData(vertices, 0, 0, numVertices, 0, k_UpdateFlags);
 
@@ -209,26 +207,21 @@ namespace LevelGeneration.Terrain.Meshing
         public readonly Mesh[] transitionMeshes;
         public readonly int3 chunkIndex;
         public readonly int chunkSize;
+        public readonly int levelScale;
         public readonly float worldScale;
-        public readonly int clipmapLevel;
-        public readonly float transitionCellPadding;
         public readonly IntPtr densityPtr;
 
-        public MeshingTask(Mesh mesh, Mesh[] transitionMeshes, int3 chunkIndex, int chunkSize, float worldScale, int clipmapLevel, float transitionCellPadding, IntPtr densityPtr)
+        public MeshingTask(Mesh mesh, Mesh[] transitionMeshes, int3 chunkIndex, int chunkSize, int levelScale, float worldScale, IntPtr densityPtr)
         {
             this.mesh = mesh;
             this.transitionMeshes = transitionMeshes;
             this.chunkIndex = chunkIndex;
             this.chunkSize = chunkSize;
+            this.levelScale = levelScale;
             this.worldScale = worldScale;
-            this.clipmapLevel = clipmapLevel;
-            this.transitionCellPadding = transitionCellPadding;
             this.densityPtr = densityPtr;
         }
 
-        public bool CanReplace(MeshingTask task)
-        {
-            return chunkIndex.Equals(task.chunkIndex) && clipmapLevel.Equals(task.clipmapLevel);
-        }
+        public bool CanReplace(MeshingTask task) => chunkIndex.Equals(task.chunkIndex) && levelScale.Equals(task.levelScale);
     }
 }
