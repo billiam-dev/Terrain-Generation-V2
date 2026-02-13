@@ -7,6 +7,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.VisualScripting;
 
 namespace LevelGeneration.Terrain.Meshing
 {
@@ -23,6 +24,7 @@ namespace LevelGeneration.Terrain.Meshing
         [ReadOnly] public int levelScale;             // ham
         [ReadOnly] public float worldScale;           // World scale of a single cell, determines the scale of the entire terrain.
         [ReadOnly] public float padding;              // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
+        [ReadOnly] public bool makeTransitionCells;
 
         // Pointer to underlying density data. Points per axis = chunkSize + 3.
         [ReadOnly, NativeDisableUnsafePtrRestriction]
@@ -42,12 +44,8 @@ namespace LevelGeneration.Terrain.Meshing
         [NativeDisableParallelForRestriction]
         public NativeArray<ReuseCellVertexIndices> vertexIndices;
 
-        bool makeTransitionCells;
-
         public void Execute()
         {
-            makeTransitionCells = levelScale != 1;
-
             // March all cells to create default meshes.
             for (int x = 0; x < chunkSize; x++)
                 for (int y = 0; y < chunkSize; y++)
@@ -116,45 +114,42 @@ namespace LevelGeneration.Terrain.Meshing
             {
                 ushort edgeCode = edgeCodes[i];
 
-                byte v0 = (byte)((edgeCode >> 4) & 0x0F); // First corner index (1d local)
-                byte v1 = (byte)(edgeCode & 0x0F);        // Second corner index (1d local)
+                byte cornerIdx0 = (byte)((edgeCode >> 4) & 0x0F);
+                byte cornerIdx1 = (byte)(edgeCode & 0x0F);
 
-                float d0 = density[v0];
-                float d1 = density[v1];
-
-                float t = d1 / (d1 - d0);
-
-                // The direction to travel to find a preceding cell with a reusable vertex can be derrived from the edge code...
-                byte cellDirection = (byte)(edgeCode >> 12);
-                int3 cellOffset = CellOffsetFromEdgeCode(cellDirection);
-
-                // ... and so can an edge index, equal to 1, 2 or 3 (see p23, Figure 3.9).
+                byte cellDir = (byte)(edgeCode >> 12);
                 byte vertexEdgeIndex = (byte)((edgeCode >> 8) & 0x0F);
 
                 // The cases presented to handle duplicate vertices at t values of 1 or 0 are so rare in actual terrain, so we don't bother to account for them here (hence why ReuseCell does not handle the 0 case, see p23, Figure 3.9).
-                // This leaves vertex reusing at the three maximal edges of the cell, which makes a huge difference.
+                // This leaves vertex reusing at the three maximal edges of the cell, which makes a signficant difference.
                 
                 // Check if we are at the maximum edges of a cell. If so, always produce a new vertex.
-                if (cellDirection == 8)
+                if (cellDir == 8)
                 {
-                    ushort vertexIndex = AddRegularVertex(index, v0, v1, t);
+                    ushort vertexIndex = AddRegularVertex(ref density, index, cornerIdx0, cornerIdx1);
+                    cellIndices[i] = vertexIndex;
 
                     reuseCell[vertexEdgeIndex] = vertexIndex;
-                    cellIndices[i] = vertexIndex;
                 }
                 else
                 {
+                    // The direction to travel to find a preceding cell with a reusable vertex can be derrived from the edge code...
+                    int3 reuseCellOffset;
+                    reuseCellOffset.z = -((cellDir >> 2) & 1);
+                    reuseCellOffset.y = -((cellDir >> 1) & 1);
+                    reuseCellOffset.x = -(cellDir & 1);
+
                     // If we are the minimum edge of a chunk and trying to reuse a cell that is out of bounds, always create a new vertex.
                     // Else, always reuse a vertex from a preceding cell.
-                    if ((index.x == 0 && cellOffset.x == -1) ||
-                        (index.y == 0 && cellOffset.y == -1) ||
-                        (index.z == 0 && cellOffset.z == -1))
+                    if ((index.x == 0 && reuseCellOffset.x == -1) ||
+                        (index.y == 0 && reuseCellOffset.y == -1) ||
+                        (index.z == 0 && reuseCellOffset.z == -1))
                     {
-                        cellIndices[i] = AddRegularVertex(index, v0, v1, t);
+                        cellIndices[i] = AddRegularVertex(ref density, index, cornerIdx0, cornerIdx1);
                     }
                     else
                     {
-                        cellIndices[i] = vertexIndices[FlattenIndex(index + cellOffset, chunkSize)][vertexEdgeIndex];
+                        cellIndices[i] = vertexIndices[FlattenIndex(index + reuseCellOffset, chunkSize)][vertexEdgeIndex];
                     }
                 }
             }
@@ -171,56 +166,48 @@ namespace LevelGeneration.Terrain.Meshing
             }
         }
 
-        ushort AddRegularVertex(int3 index, byte v0, byte v1, float t)
+        ushort AddRegularVertex(ref CubeCorners<float> density, int3 index, byte v0, byte v1)
         {
+            float d0 = density[v0];
+            float d1 = density[v1];
+
+            float t = d1 / (d1 - d0);
+
             // Compute edge indices.
             int3 i0 = index + TransvoxelTables.CornerOffsets[v0];
             int3 i1 = index + TransvoxelTables.CornerOffsets[v1];
 
             // Make edge mask.
-            int edgeMask = 0;
-            if (makeTransitionCells)
-                edgeMask = MakeEdgeMask(i0, i1);
+            int edgeMask = GetEdgeMask(i0, i1);
 
             // Compute normals with adjacent samples.
             float3 n0 = ComputeNormal(i0);
             float3 n1 = ComputeNormal(i1);
-            float3 normal = -math.normalize((t * n0) + ((1.0f - t) * n1));
+            //float3 normal = -math.normalize((t * n0) + ((1.0f - t) * n1));
+            //float3 normal = -math.normalize(n0 + n1);
+            float3 normal = -math.normalizesafe(math.lerp(n1, n0, t));
 
             // Compute primary position.
-            float3 p0 = (float3)i0 * levelScale;
-            float3 p1 = (float3)i1 * levelScale;
-            float3 position = (t * p0) + ((1.0f - t) * p1);
+            float3 p0 = (float3)i0;
+            float3 p1 = (float3)i1;
+            //float3 primaryPos = (t * p0) + ((1.0f - t) * p1);
+            float3 primaryPos = math.lerp(p1, p0, t);
 
             // Compute secondary position.
-            float3 transitionDelta = GetTransitionDelta(edgeMask, position) * padding;
-            float3 sPosition = ReprojectPointWithNormal(position, transitionDelta, normal);
-
-            // Magnify by the cell scale.
-            position *= worldScale;
-            sPosition *= worldScale;
+            //float3 secondaryPos = ReprojectPointWithNormal(primaryPos, GetTransitionDelta(edgeMask, primaryPos) * padding, normal);
+            float3 secondaryPos = primaryPos;
 
             // Add vertex and return its index.
-            ushort vertexIndex = (ushort)vertices.Length;
-            vertices.Add(new Vertex(position, normal, sPosition, edgeMask));
+            vertices.Add(new Vertex(TransformPoint(primaryPos), normal, TransformPoint(secondaryPos), edgeMask));
 
-            return vertexIndex;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly int3 CellOffsetFromEdgeCode(byte index)
-        {
-            int3 value;
-            value.z = -((index >> 2) & 1);
-            value.y = -((index >> 1) & 1);
-            value.x = -(index & 1);
-
-            return value;
+            return (ushort)(vertices.Length - 1);
         }
 
         #endregion
 
         #region Transition Cells
+
+        // TODO: revise transition cell logic to mirror improved regular cell logic.
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void MarchTransitionCell(int2 cellIndex, int chunkFaceIndex)
@@ -327,9 +314,7 @@ namespace LevelGeneration.Terrain.Meshing
             int3 i0 = global_i0;
             int3 i1 = global_i1;
 
-            int edgeMask = 0;
-            if (v0 > 8 && v1 > 8)
-                edgeMask = MakeEdgeMask(i0, i1);
+            int edgeMask = GetEdgeMask(i0, i1);
 
             // Compute normals with adjacent samples.
             float3 n0 = ComputeNormal(global_i0);
@@ -354,18 +339,6 @@ namespace LevelGeneration.Terrain.Meshing
             vertices.Add(new Vertex(position, normal, sPosition, edgeMask));
 
             return vertexIndex;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly int MakeEdgeMask(float3 i0, float3 i1)
-        {
-            // Order: (x, -x, y, -y, z, -z)
-            return ((i0.x == chunkSize || i1.x == chunkSize) ? 1 : 0)
-                 | ((i0.x == 0 || i1.x == 0) ? 2 : 0)
-                 | ((i0.y == chunkSize || i1.y == chunkSize) ? 4 : 0)
-                 | ((i0.y == 0 || i1.y == 0) ? 8 : 0)
-                 | ((i0.z == chunkSize || i1.z == chunkSize) ? 16 : 0)
-                 | ((i0.z == 0 || i1.z == 0) ? 32 : 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -426,8 +399,26 @@ namespace LevelGeneration.Terrain.Meshing
         #region Utility
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        readonly int GetEdgeMask(float3 i0, float3 i1)
+        {
+            if (!makeTransitionCells)
+                return 0;
+
+            // Order: (x, -x, y, -y, z, -z)
+            return ((i0.x == chunkSize || i1.x == chunkSize) ? 1 : 0)
+                 | ((i0.x == 0 || i1.x == 0) ? 2 : 0)
+                 | ((i0.y == chunkSize || i1.y == chunkSize) ? 4 : 0)
+                 | ((i0.y == 0 || i1.y == 0) ? 8 : 0)
+                 | ((i0.z == chunkSize || i1.z == chunkSize) ? 16 : 0)
+                 | ((i0.z == 0 || i1.z == 0) ? 32 : 0);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly float3 ComputeNormal(int3 coord)
         {
+            // TODO: we are getting bad normals, and occationally VERY bad normals creating glowy artefacts on screen.
+            // Fix this!
+
             float3 normal;
             normal.x = SampleDensity(coord - Axis.right) - SampleDensity(coord + Axis.right);
             normal.y = SampleDensity(coord - Axis.up) - SampleDensity(coord + Axis.up);
@@ -462,6 +453,8 @@ namespace LevelGeneration.Terrain.Meshing
             return *(ptr + index);
         }
 
+        readonly float3 TransformPoint(float3 p) => levelScale * worldScale * p;
+
         public static int FlattenIndex(int3 index, int size) => (index.z * size * size) + (index.y * size) + index.x;
 
         #endregion
@@ -491,7 +484,7 @@ namespace LevelGeneration.Terrain.Meshing
                     1 => x,
                     2 => y,
                     3 => z,
-                    _ => throw new System.IndexOutOfRangeException()
+                    _ => throw new IndexOutOfRangeException()
                 };
             }
             set
@@ -501,7 +494,7 @@ namespace LevelGeneration.Terrain.Meshing
                     case 1: x = value; break;
                     case 2: y = value; break;
                     case 3: z = value; break;
-                    default: throw new System.IndexOutOfRangeException();
+                    default: throw new IndexOutOfRangeException();
                 }
             }
         }
@@ -542,7 +535,7 @@ namespace LevelGeneration.Terrain.Meshing
                     9 => v10,
                     10 => v11,
                     11 => v12,
-                    _ => throw new System.IndexOutOfRangeException(),
+                    _ => throw new IndexOutOfRangeException(),
                 };
             }
             set
@@ -585,7 +578,7 @@ namespace LevelGeneration.Terrain.Meshing
                     case 11:
                         v12 = value;
                         break;
-                    default: throw new System.IndexOutOfRangeException();
+                    default: throw new IndexOutOfRangeException();
                 }
             }
         }

@@ -30,11 +30,13 @@ namespace LevelGeneration.Terrain
 
             GUI.Label(rect, $"Avg density eval time: {Stopwatch.ToMilliseconds(s_AvgDensityEvalTime.Avarage())}ms");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Avg meshing time: {Stopwatch.ToMilliseconds(s_AvgMeshingTime.Avarage())}ms");
+            GUI.Label(rect, $"Completed: {m_TotalMeshingTasks} meshing tasks in {Stopwatch.ToMilliseconds(m_TotalMeshingTime)}ms");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Total update time: {Stopwatch.ToMilliseconds(updateTime)}ms");
+            GUI.Label(rect, $"   (avg: {Stopwatch.ToMilliseconds(s_AvgMeshingTime.Avarage())}ms)");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Total Render time: {Stopwatch.ToMilliseconds(renderTime)}ms");
+            GUI.Label(rect, $"Total update time: {Stopwatch.ToMilliseconds(m_UpdateTime)}ms");
+            rect.y += k_SingleLineHeight;
+            GUI.Label(rect, $"Total Render time: {Stopwatch.ToMilliseconds(m_RenderTime)}ms");
             rect.y += k_SingleLineHeight * 2.0f;
 
             foreach (Brickmap brickmap in m_BrickmapLevels)

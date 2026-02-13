@@ -1,9 +1,20 @@
-Shader "TransvoxelTerrain"
+// https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader
+
+Shader "Terrain"
 {
     Properties
     {
-        _BaseColor("Base Color", Color) = (1, 1, 1, 1)
-        _BaseMap("Base Map", 2D) = "white"
+        _SurfaceMetallicAlbedo("Surface Base Map", 2D) = "white" {}
+        _SurfaceNormal("Surface Normal Map", 2D) = "white" {}
+        _SurfaceAmbientOcclusion("Surface Ambient Occlusion", 2D) = "white" {}
+        _SurfaceColor("Surface Color", Color) = (1, 1, 1, 1)
+
+        _SideMetallicAlbedo("Side Base Map", 2D) = "white" {}
+        _SideNormal("Side Normal Map", 2D) = "white" {}
+        _SideAmbientOcclusion("Side Ambient Occlusion", 2D) = "white" {}
+        _SideColor("Sides Color", Color) = (1, 1, 1, 1)
+
+        _SlopeFactor("Slope Factor", float) = 1.0
     }
 
     SubShader
@@ -17,19 +28,21 @@ Shader "TransvoxelTerrain"
 
         Pass
         {
-            Name "Forward Pass"
+            Name "ForwardLit"
             Tags { "LightMode" = "UniversalForward" }
 
             HLSLPROGRAM
 
-            #define _SPECULAR_COLOR_SPECULAR_COLOR
+            #pragma target 2.0
 
             #pragma vertex vert
             #pragma fragment frag
 
-            #pragma shader_feature _FORWARD_PLUS
             #pragma shader_feature_fragment _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma shader_feature_fragment _ _ADDITIONAL_LIGHTS
             #pragma shader_feature_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma shader_feature_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
+            #pragma shader_feature _CLUSTER_LIGHT_LOOP
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -49,14 +62,38 @@ Shader "TransvoxelTerrain"
                 float3 normalWS    : TEXCOORD1;
             };
 
-            TEXTURE2D(_BaseMap);
-            SAMPLER(sampler_BaseMap);
-            float4 _BaseMap_ST;
+            TEXTURE2D(_SurfaceMetallicAlbedo);
+            SAMPLER(sampler_SurfaceMetallicAlbedo);
+            float4 _SurfaceMetallicAlbedo_ST;
 
-            half3 _BaseColor;
+            TEXTURE2D(_SurfaceNormal);
+            SAMPLER(sampler_SurfaceNormal);
+            float4 _SurfaceNormal_ST;
+
+            TEXTURE2D(_SurfaceAmbientOcclusion);
+            SAMPLER(sampler_SurfaceAmbientOcclusion);
+            float4 _SurfaceAmbientOcclusion_ST;
+
+            half4 _SurfaceColor;
+
+            TEXTURE2D(_SideMetallicAlbedo);
+            SAMPLER(sampler_SideMetallicAlbedo);
+            float4 _SideMetallicAlbedo_ST;
+
+            TEXTURE2D(_SideNormal);
+            SAMPLER(sampler_SideNormal);
+            float4 _SideNormal_ST;
+
+            TEXTURE2D(_SideAmbientOcclusion);
+            SAMPLER(sampler_SideAmbientOcclusion);
+            float4 _SideAmbientOcclusion_ST;
+
+            half4 _SideColor;
+
+            half _SlopeFactor;
 
             int _PackedLODData;
-            half3 _ClipmapDebugColor;
+            half4 _ClipmapDebugColor;
 
             Varyings vert(Attributes IN)
             {
@@ -73,47 +110,60 @@ Shader "TransvoxelTerrain"
                 return OUT;
             }
 
-            half3 frag(Varyings IN) : SV_Target
+            float4 ComputeTriplanarTexture(TEXTURE2D() tex, SAMPLER() s, float4 st, float3 positionWS, float3 normalWS)
             {
-                // Compute albedo color.
                 float2 uv0, uv1, uv2;
-                half3 a1, a2, a3;
+                float4 a1, a2, a3;
 
-                float3 triplanarW = ComputeTriplanarWeights(IN.normalWS);
-                GetTriplanarCoordinate(IN.positionWS, uv0, uv1, uv2);
+                float3 triplanarW = ComputeTriplanarWeights(normalize(normalWS));
+                GetTriplanarCoordinate(positionWS, uv0, uv1, uv2);
                 
-                a1 = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, uv0 * _BaseMap_ST.xy + _BaseMap_ST.zw).rgb * triplanarW.y;
-                a2 = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, uv1 * _BaseMap_ST.xy + _BaseMap_ST.zw).rgb * triplanarW.z;
-                a3 = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, uv2 * _BaseMap_ST.xy + _BaseMap_ST.zw).rgb * triplanarW.x;
+                a1 = SAMPLE_TEXTURE2D(tex, s, uv0 * st.xy + st.zw) * triplanarW.y;
+                a2 = SAMPLE_TEXTURE2D(tex, s, uv1 * st.xy + st.zw) * triplanarW.z;
+                a3 = SAMPLE_TEXTURE2D(tex, s, uv2 * st.xy + st.zw) * triplanarW.x;
 
-                half3 albedoColor = (a1 + a2 + a3) * _BaseColor.rgb;
+                return a1 + a2 + a3;
+            }
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                // Compute materials.
+                half4 surfaceColor = ComputeTriplanarTexture(_SurfaceMetallicAlbedo, sampler_SurfaceMetallicAlbedo, _SurfaceMetallicAlbedo_ST, IN.positionWS, IN.normalWS);
+                half4 surfaceNormal = ComputeTriplanarTexture(_SurfaceNormal, sampler_SurfaceNormal, _SurfaceNormal_ST, IN.positionWS, IN.normalWS);
+                half surfaceAO = ComputeTriplanarTexture(_SurfaceAmbientOcclusion, sampler_SideMetallicAlbedo, _SideMetallicAlbedo_ST, IN.positionWS, IN.normalWS).a;
+                
+                half4 sideColor = ComputeTriplanarTexture(_SideMetallicAlbedo, sampler_SideMetallicAlbedo, _SideMetallicAlbedo_ST, IN.positionWS, IN.normalWS);
+                half4 sideNormal = ComputeTriplanarTexture(_SideNormal, sampler_SideNormal, _SideNormal_ST, IN.positionWS, IN.normalWS);
+                half sideAO = ComputeTriplanarTexture(_SideAmbientOcclusion, sampler_SideAmbientOcclusion, _SideAmbientOcclusion_ST, IN.positionWS, IN.normalWS).a;
+
+                // Get slope.
+                half slope = saturate(dot(IN.normalWS, half3(0, 1, 0)));
+                slope = 1 - pow(slope, _SlopeFactor);
+
+                half4 metallicAlbedo = lerp(surfaceColor * _SurfaceColor, sideColor * _SideColor, slope);
+                half4 normal = lerp(surfaceNormal, sideNormal, slope);
+                half ao = lerp(surfaceAO, sideAO, slope);
 
                 // Compute light color.
-                InputData lighting = (InputData) 0;
-                lighting.positionWS = IN.positionWS;
-                lighting.normalWS = IN.normalWS;
-                lighting.viewDirectionWS = GetWorldSpaceViewDir(IN.positionWS);
-                lighting.shadowCoord = TransformWorldToShadowCoord(IN.positionWS);
+                InputData inputData = (InputData) 0;
+                inputData.positionWS = IN.positionWS;
+                inputData.normalWS = IN.normalWS;
+                inputData.viewDirectionWS = GetWorldSpaceViewDir(IN.positionWS);
+                inputData.shadowCoord = TransformWorldToShadowCoord(IN.positionWS);
 
-                SurfaceData surface = (SurfaceData) 0;
-                surface.albedo = albedoColor;
-                surface.alpha = 1.0f;
-                surface.smoothness = 1.0f;
-                surface.specular = 1.0f;
+                // https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceData.hlsl
+                SurfaceData surfaceData = (SurfaceData) 0;
+                surfaceData.albedo = metallicAlbedo.rgb;
+                surfaceData.metallic = metallicAlbedo.a;
+                surfaceData.normalTS = UnpackNormal(normal);
+                surfaceData.occlusion = ao;
+                surfaceData.alpha = 1;
+                surfaceData.smoothness = 0;
+                surfaceData.specular = 0;
 
-                float3 litColor = UniversalFragmentBlinnPhong(lighting, surface) + unity_AmbientSky;
+                half4 litColor = UniversalFragmentPBR(inputData, surfaceData);// + unity_AmbientSky;
 
-                litColor *= _ClipmapDebugColor + 0.5f / 2.0f;
-
-                return litColor;
-
-                /*
-                Light mainLight = GetMainLight();
-                float lightIntensity = saturate(dot(IN.normalWS, -mainLight.direction));
-                float3 lightColor = mainLight.color * lightIntensity + _GlossyEnvironmentColor.rgb;
-
-                return albedoColor * lightColor * (_ClipmapDebugColor + 0.5f / 2.0f);
-                */
+                return litColor * (_ClipmapDebugColor + 0.5 / 2.0);
             }
 
             ENDHLSL
@@ -124,13 +174,16 @@ Shader "TransvoxelTerrain"
             Name "Shadow Caster"
             Tags { "LightMode" = "ShadowCaster" }
 
+            ZWrite On
             ColorMask 0
             Cull Off
 
             HLSLPROGRAM
 
-            #pragma vertex vert
-            #pragma fragment frag
+            #pragma target 2.0
+
+            #pragma vertex ShadowPassVertexe
+            #pragma fragment ShadowPassFragment
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
@@ -154,16 +207,13 @@ Shader "TransvoxelTerrain"
 
             float4 GetShadowPositionHClip(Attributes input)
             {
-                float3 positionWS = TransformObjectToWorld(input.positionOS);
-                float3 normalWS = normalWS = TransformObjectToWorldNormal(input.normalOS);
-                
+                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
+                float3 normalWS = normalWS = TransformObjectToWorldNormal(input.normalOS.xyz);
                 float4 positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
-                positionCS = ApplyShadowClamping(positionCS);
-                
-                return positionCS;
+                return ApplyShadowClamping(positionCS);
             }
 
-            Varyings vert(Attributes IN)
+            Varyings ShadowPassVertexe(Attributes IN)
             {
                 float4 positionOS = IN.positionOS;
 
@@ -176,7 +226,7 @@ Shader "TransvoxelTerrain"
                 return OUT;
             }
 
-            half3 frag(Varyings IN) : SV_Target
+            half3 ShadowPassFragment(Varyings IN) : SV_Target
             {
                 return 0;
             }

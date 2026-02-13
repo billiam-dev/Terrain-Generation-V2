@@ -89,6 +89,10 @@ namespace LevelGeneration.Terrain
 
                 foreach (Shape shape in shapes)
                 {
+                    // Skip global shapes.
+                    if (shape.distanceFunction == DistanceFunction.Surface || shape.distanceFunction == DistanceFunction.Noise)
+                        continue;
+
                     shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                     GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
 

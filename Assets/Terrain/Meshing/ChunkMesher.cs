@@ -78,6 +78,8 @@ namespace LevelGeneration.Terrain.Meshing
                 chunkSize = meshingTask.chunkSize,
                 levelScale = meshingTask.levelScale,
                 worldScale = meshingTask.worldScale,
+                padding = 0.5f,
+                makeTransitionCells = meshingTask.levelScale != 1,
                 densityPtr = meshingTask.densityPtr,
                 vertices = m_Vertices,
                 indices = m_Indices,

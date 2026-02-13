@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
@@ -61,7 +60,7 @@ namespace LevelGeneration.Terrain
             DensityJob job = new()
             {
                 distanceFunctions = distanceFunctions,
-                initialValue = ProceduralTerrain.EmptyDensityValue,
+                initialDensity = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 extendedBrickSize = m_DensityDataSize,
@@ -88,7 +87,7 @@ namespace LevelGeneration.Terrain
         struct DensityJob : IJobFor
         {
             [ReadOnly] public NativeArray<SDF> distanceFunctions;
-            [ReadOnly] public float initialValue;
+            [ReadOnly] public float initialDensity;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
             [ReadOnly] public int extendedBrickSize;
@@ -107,21 +106,21 @@ namespace LevelGeneration.Terrain
             public void Execute(int index)
             {
                 // Unwrap the iteration index into a 3D index using the extended brick size.
-                int x = index;
+                int3 coord = 0;
 
-                int z = x / (extendedBrickSize * extendedBrickSize);
-                x -= z * extendedBrickSize * extendedBrickSize;
+                coord.x = index;
 
-                int y = x / extendedBrickSize;
-                x -= y * extendedBrickSize;
+                coord.z = coord.x / (extendedBrickSize * extendedBrickSize);
+                coord.x -= coord.z * extendedBrickSize * extendedBrickSize;
 
-                int3 coord = new(x, y, z);
+                coord.y = coord.x / extendedBrickSize;
+                coord.x -= coord.y * extendedBrickSize;
 
                 // Derrive world position from iteration index.
                 float3 worldPosition = levelScale * worldScale * (float3)((brickIndex * brickSize) + (coord - 1));
 
                 // Apply distance functions.
-                float newDensity = initialValue;
+                float newDensity = initialDensity;
                 
                 float3 translatedPosition;
                 float distance;
@@ -134,7 +133,7 @@ namespace LevelGeneration.Terrain
                     // Special case for noise.
                     if (sdf.functionID == 6)
                     {
-                        newDensity += Noise(translatedPosition, sdf.dimentions.x, sdf.dimentions.y);
+                        newDensity += Noise(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, 3);
                         continue;
                     }
 
@@ -241,17 +240,17 @@ namespace LevelGeneration.Terrain
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static float Surface(float3 pos)
             {
-                return pos.y;
+                return pos.y + Noise(new float3(pos.x, 0, pos.z), 0.005f, 25.0f, 5);
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static float Noise(float3 pos, float frequency, float amplitude)
+            public static float Noise(float3 pos, float frequency, float amplitude, int octaves)
             {
                 float n = 0.0f;
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < octaves; i++)
                 {
-                    n += SimplexNoise.snoise(pos * frequency) * amplitude;
-                    frequency *= 0.5f;
+                    n += SimplexNoise.Sample(pos * frequency) * amplitude;
+                    frequency *= 2.0f;
                     amplitude *= 0.5f;
                 }
 

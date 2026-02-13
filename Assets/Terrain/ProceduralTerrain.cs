@@ -17,6 +17,7 @@ namespace LevelGeneration.Terrain
         public Material Material;
         public bool ForceMainCamera;
         public bool UseStaticOrigin;
+        public bool ColorBrickmapLevels;
 
         SDFScene m_Scene;
         Brickmap[] m_BrickmapLevels;
@@ -29,8 +30,10 @@ namespace LevelGeneration.Terrain
 
         static MeanTime s_AvgDensityEvalTime;
         static MeanTime s_AvgMeshingTime;
-        double updateTime;
-        double renderTime;
+        double m_TotalMeshingTime;
+        int m_TotalMeshingTasks;
+        double m_UpdateTime;
+        double m_RenderTime;
 
         const float k_WorldScale = 1.0f;      // The size of a single cell in world units, effectively controls the scale of the whole terrain.
         const int k_BrickSize = 16;           // The number of cells per axis contained in a single brick.
@@ -135,7 +138,7 @@ namespace LevelGeneration.Terrain
             if (!camera)
                 return;
 
-            Stopwatch.Start(ref updateTime);
+            Stopwatch.Start(ref m_UpdateTime);
 
             float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
 
@@ -146,40 +149,35 @@ namespace LevelGeneration.Terrain
 
             // Execute meshing tasks queued this frame.
             int pendingTasks = s_Mesher.NumPendingTasks;
-
             if (pendingTasks > 0)
             {
-                double t = 0.0;
-                Stopwatch.Start(ref t);
+                m_TotalMeshingTasks = pendingTasks;
+
+                Stopwatch.Start(ref m_TotalMeshingTime);
 
                 s_Mesher.ExecutePendingTasksContinuous();
 
-                Stopwatch.End(ref t);
-                s_AvgMeshingTime.AddTime(t / pendingTasks);
+                Stopwatch.End(ref m_TotalMeshingTime);
+                s_AvgMeshingTime.AddTime(m_TotalMeshingTime / m_TotalMeshingTasks);
             }
 
             // Disable scene changed flag.
             m_Scene.IsDirty = false;
 
-            Stopwatch.End(ref updateTime);
+            Stopwatch.End(ref m_UpdateTime);
         }
 
         void RenderTerrain(ScriptableRenderContext context, Camera camera)
         {
-            Stopwatch.Start(ref renderTime);
+            Stopwatch.Start(ref m_RenderTime);
 
             for (int i = 0; i < k_NumBrickmapLevels; i++)
             {
-#if UNITY_EDITOR
-                m_MaterialProperties.SetColor("_ClipmapDebugColor", k_BrickmapLevelDebugColors[i]);
-#else
-                m_MaterialProperties.SetColor("_ClipmapDebugColor", Color.white);
-#endif
-
+                m_MaterialProperties.SetColor("_ClipmapDebugColor", ColorBrickmapLevels ? k_BrickmapLevelDebugColors[i] : Color.white);
                 m_BrickmapLevels[i].Render(camera, Material, m_MaterialProperties);
             }
 
-            Stopwatch.End(ref renderTime);
+            Stopwatch.End(ref m_RenderTime);
         }
 
         /// <summary>
@@ -272,6 +270,18 @@ namespace LevelGeneration.Terrain
 
             // TODO
             return EmptyDensityValue;
+        }
+
+        /// <summary>
+        /// Raytraces the terrain to find the surface position.
+        /// </summary>
+        public float3 FindSurface(float3 origin, float3 direction)
+        {
+            // We can use the cached density values to speed this up, if a brick we are visiting is not allocated we can skip it immediatly.
+
+            // Pog http://www.cse.yorku.ca/~amana/research/grid.pdf
+
+            return 0.0f;
         }
 
         static void GetBrickVolumeFromAABB(int brickSize, float scale, float3 boundsCentre, float3 boundsVolume, out int3 initialIndex, out int3 volume)
@@ -420,7 +430,7 @@ namespace LevelGeneration.Terrain
                         return;
 
                     // TODO: I reckon this is garbage performance.
-                    Graphics.DrawMesh(mesh, Matrix4x4.TRS(worldPosition, Quaternion.identity, Vector3.one), material, 0, renderCamera, 0, mpb);
+                    Graphics.DrawMesh(mesh, worldPosition, Quaternion.identity, material, 0, renderCamera, 0, mpb);
                 }
 
                 void EvaluateDensity(List<Shape> shapes)
@@ -510,6 +520,14 @@ namespace LevelGeneration.Terrain
                 }
 
                 public void MarkAsModified() => densityModified = true;
+
+                public float SampleCache(int3 index)
+                {
+                    int extendedSize = size + 3;
+                    return density[(index.z * extendedSize * extendedSize) + (index.y * extendedSize) + index.x];
+                }
+
+                public bool IntersecsSurface => !isUniformState;
             }
 
             readonly int brickmapSize;         // Number of bricks per axis contained in this brick map.
@@ -543,7 +561,7 @@ namespace LevelGeneration.Terrain
                 halfBrickmapSize = brickmapSize / 2;
                 quarterBrickmapSize = brickmapSize / 4;
 
-                levelScale = (int)math.pow(2, levelIndex);
+                levelScale = 1 << levelIndex;
 
                 bricks = new(brickmapSize * brickmapSize * brickmapSize);
                 shapes = new();
@@ -675,6 +693,9 @@ namespace LevelGeneration.Terrain
 
             void FindIntersectingShapes(List<Shape> shapes, SDFScene scene)
             {
+                // TODO: a fun optimization here; a given brickmap level only needs to test shapes for intersection that passed the check for the prior brickmap level.
+                // This sort of acts a binary chop for the shape data, cutting down on the other most expensive part of the updating loop.
+
                 shapes.Clear();
 
                 foreach (Shape shape in scene.Shapes)
@@ -750,6 +771,16 @@ namespace LevelGeneration.Terrain
                 }
 
                 return false;
+            }
+
+            public bool BrickIntersectsSurface(int3 brickIndex) => bricks.ContainsKey(brickIndex) && bricks[brickIndex].IntersecsSurface;
+
+            public float SampleCache(int3 brickIndex, int3 cellIndex)
+            {
+                if (!bricks.ContainsKey(brickIndex))
+                    return EmptyDensityValue;
+
+                return bricks[brickIndex].SampleCache(cellIndex);
             }
         }
 
