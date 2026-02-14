@@ -90,7 +90,7 @@ namespace LevelGeneration.Terrain
                 foreach (Shape shape in shapes)
                 {
                     // Skip global shapes.
-                    if (shape.distanceFunction == DistanceFunction.Surface || shape.distanceFunction == DistanceFunction.Noise)
+                    if (shape.IsGlobal)
                         continue;
 
                     shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);

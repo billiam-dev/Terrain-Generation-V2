@@ -52,7 +52,7 @@ Shader "Terrain"
                 float4 positionOS  : POSITION;
                 float4 normalOS    : NORMAL;
                 float4 sPositionOS : TANGENT;   // Secondary positions, padded to make room for transition cells.
-                int edgeMask       : COLOR;     // Edge mask, combied with packed LOD data to determine whether to use secondary positions.
+                uint edgeMask      : COLOR;     // Edge mask, combied with packed LOD data to determine whether to use secondary positions.
             };
 
             struct Varyings
@@ -92,7 +92,7 @@ Shader "Terrain"
 
             half _SlopeFactor;
 
-            int _PackedLODData;
+            uint _PackedLODData;
             half4 _ClipmapDebugColor;
 
             Varyings vert(Attributes IN)

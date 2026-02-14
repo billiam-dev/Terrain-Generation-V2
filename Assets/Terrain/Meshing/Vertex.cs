@@ -12,7 +12,7 @@ namespace LevelGeneration.Terrain.Meshing
         public float3 secondaryPosition; // Padded position to make room for transition cells.
         public int edgeMask;
 
-        public Vertex(float3 position, float3 normal, float3 secondaryPosition, int edgeMask)
+        public Vertex(float3 position, float3 secondaryPosition, float3 normal, int edgeMask)
         {
             this.position = position;
             this.normal = normal;

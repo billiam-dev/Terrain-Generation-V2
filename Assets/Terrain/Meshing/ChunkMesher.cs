@@ -111,11 +111,9 @@ namespace LevelGeneration.Terrain.Meshing
 
         void UpdateMeshData(Mesh mesh, Mesh[] transitionMeshes)
         {
-            NativeArray<Vertex> vertices = m_Vertices.ToArray(Allocator.Temp);
-            NativeArray<ushort> indices = m_Indices.ToArray(Allocator.Temp);
-
             // Early return if vertices or indices come back empty.
-            if (vertices.Length < 2 || indices.Length < 2)
+            // Note: this check actually does pass sometimes, though it shouldn't really...
+            if (m_Vertices.Length < 2 || m_Indices.Length < 2)
             {
                 mesh.Clear();
 
@@ -127,6 +125,10 @@ namespace LevelGeneration.Terrain.Meshing
 
                 return;
             }
+
+            // Allocate temp arrays.
+            NativeArray<Vertex> vertices = m_Vertices.ToArray(Allocator.Temp);
+            NativeArray<ushort> indices = m_Indices.ToArray(Allocator.Temp);
 
             SubMeshDescriptor subMeshDescriptor = new(0, 0, MeshTopology.Triangles);
 
@@ -162,44 +164,48 @@ namespace LevelGeneration.Terrain.Meshing
             mesh.SetSubMesh(0, subMeshDescriptor, k_UpdateFlags);
 
             // Update transition meshes
-            if (transitionMeshes == null)
-                return;
-
-            for (int i = 0; i < 6; i++)
+            if (transitionMeshes != null)
             {
-                verticesStart = m_MeshStartIndices[i].x;
-                indicesStart = m_MeshStartIndices[i].y;
-
-                if (i < 5)
+                for (int i = 0; i < 6; i++)
                 {
-                    verticesEnd = m_MeshStartIndices[i + 1].x;
-                    indicesEnd = m_MeshStartIndices[i + 1].y;
+                    verticesStart = m_MeshStartIndices[i].x;
+                    indicesStart = m_MeshStartIndices[i].y;
+
+                    if (i < 5)
+                    {
+                        verticesEnd = m_MeshStartIndices[i + 1].x;
+                        indicesEnd = m_MeshStartIndices[i + 1].y;
+                    }
+                    else
+                    {
+                        verticesEnd = vertices.Length;
+                        indicesEnd = indices.Length;
+                    }
+
+                    numVertices = verticesEnd - verticesStart;
+                    numIndices = indicesEnd - indicesStart;
+
+                    if (numVertices < 2 || numIndices < 2)
+                    {
+                        transitionMeshes[i].Clear();
+                        continue;
+                    }
+
+                    transitionMeshes[i].SetVertexBufferParams(numVertices, Vertex.Format);
+                    transitionMeshes[i].SetVertexBufferData(vertices, verticesStart, 0, numVertices, 0, k_UpdateFlags);
+
+                    transitionMeshes[i].SetIndexBufferParams(numIndices, IndexFormat.UInt16);
+                    transitionMeshes[i].SetIndexBufferData(indices, indicesStart, 0, numIndices, k_UpdateFlags);
+
+                    subMeshDescriptor.indexCount = numIndices;
+                    transitionMeshes[i].subMeshCount = 1;
+                    transitionMeshes[i].SetSubMesh(0, subMeshDescriptor, k_UpdateFlags);
                 }
-                else
-                {
-                    verticesEnd = vertices.Length;
-                    indicesEnd = indices.Length;
-                }
-
-                numVertices = verticesEnd - verticesStart;
-                numIndices = indicesEnd - indicesStart;
-
-                if (numVertices < 2 || numIndices < 2)
-                {
-                    transitionMeshes[i].Clear();
-                    continue;
-                }
-
-                transitionMeshes[i].SetVertexBufferParams(numVertices, Vertex.Format);
-                transitionMeshes[i].SetVertexBufferData(vertices, verticesStart, 0, numVertices, 0, k_UpdateFlags);
-
-                transitionMeshes[i].SetIndexBufferParams(numIndices, IndexFormat.UInt16);
-                transitionMeshes[i].SetIndexBufferData(indices, indicesStart, 0, numIndices, k_UpdateFlags);
-
-                subMeshDescriptor.indexCount = numIndices;
-                transitionMeshes[i].subMeshCount = 1;
-                transitionMeshes[i].SetSubMesh(0, subMeshDescriptor, k_UpdateFlags);
             }
+
+            // Dispose temp arrays.
+            vertices.Dispose();
+            indices.Dispose();
         }
     }
 

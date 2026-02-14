@@ -70,12 +70,12 @@ namespace LevelGeneration.Terrain.ShapePainter
                     break;
 
                 case DistanceFunction.Cube:
-                case DistanceFunction.Surface:
                     EditorGUILayout.PropertyField(m_Dimention1, new GUIContent("Width"));
                     EditorGUILayout.PropertyField(m_Dimention2, new GUIContent("Height"));
                     EditorGUILayout.PropertyField(m_Dimention3, new GUIContent("Depth"));
                     break;
 
+                case DistanceFunction.Surface:
                 case DistanceFunction.Noise:
                     EditorGUILayout.PropertyField(m_Dimention1, new GUIContent("Frequency"));
                     EditorGUILayout.PropertyField(m_Dimention2, new GUIContent("Amplitude"));
@@ -111,7 +111,6 @@ namespace LevelGeneration.Terrain.ShapePainter
                     break;
 
                 case DistanceFunction.Cube:
-                case DistanceFunction.Surface:
                     DrawBoxHandle();
                     break;
             }

@@ -14,6 +14,8 @@ namespace LevelGeneration.Terrain
     [DisallowMultipleComponent]
     public partial class ProceduralTerrain : MonoBehaviour
     {
+        // TODO: There is an undetected memory leak somewhere in here, look at task manager when enabling/disabling the terrain.
+
         public Material Material;
         public bool ForceMainCamera;
         public bool UseStaticOrigin;
@@ -23,13 +25,15 @@ namespace LevelGeneration.Terrain
         Brickmap[] m_BrickmapLevels;
         MaterialPropertyBlock m_MaterialProperties;
         
-        bool m_IsInitialized;
+        bool m_Initialized;
 
         static DensityEvaluator s_DensityEvaluator;
         static BatchChunkMesher s_Mesher;
 
         static MeanTime s_AvgDensityEvalTime;
         static MeanTime s_AvgMeshingTime;
+        static uint s_DrawingVertices;
+        static uint s_DrawingIndices;
         double m_TotalMeshingTime;
         int m_TotalMeshingTasks;
         double m_UpdateTime;
@@ -55,12 +59,13 @@ namespace LevelGeneration.Terrain
 
         void OnDisable()
         {
-            Dispose();
             RenderPipelineManager.beginCameraRendering -= RenderTerrain;
 
 #if UNITY_EDITOR
             EditorApplication.update -= UpdateTerrain;
 #endif
+
+            Dispose();
         }
 
 #if !UNITY_EDITOR
@@ -88,47 +93,56 @@ namespace LevelGeneration.Terrain
 
         public void Initialize()
         {
+            if (m_Initialized)
+                return;
+
             m_Scene = new();
-
             m_BrickmapLevels = new Brickmap[k_NumBrickmapLevels];
-            for (int i = 0; i < k_NumBrickmapLevels; i++)
-                m_BrickmapLevels[i] = new(k_BrickmapLevelSize, k_BrickSize, i, k_WorldScale);
-
             m_MaterialProperties = new();
 
-            s_DensityEvaluator ??= new();
-            s_DensityEvaluator.Allocate(k_BrickSize);
-
-            s_Mesher ??= new();
-            s_Mesher.Allocate();
+            s_DensityEvaluator = new();
+            s_Mesher = new();
 
             s_AvgDensityEvalTime = new();
             s_AvgMeshingTime = new();
 
-            m_IsInitialized = true;
+            s_DensityEvaluator.Allocate(k_BrickSize);
+            s_Mesher.Allocate();
+
+            for (int i = 0; i < k_NumBrickmapLevels; i++)
+                m_BrickmapLevels[i] = new(k_BrickmapLevelSize, k_BrickSize, i, k_WorldScale);
+
+            m_Initialized = true;
         }
 
         public void Dispose()
         {
+            if (!m_Initialized)
+                return;
+
             foreach (Brickmap brickmap in m_BrickmapLevels)
                 brickmap.Dispose();
+
+            s_DensityEvaluator.Dispose();
+            s_Mesher.Dispose();
 
             m_Scene = null;
             m_BrickmapLevels = null;
             m_MaterialProperties = null;
 
-            s_DensityEvaluator.Dispose();
-            s_Mesher.Dispose();
+            s_DensityEvaluator = null;
+            s_Mesher = null;
 
             s_AvgDensityEvalTime = null;
             s_AvgMeshingTime = null;
 
-            m_IsInitialized = false;
+            m_Initialized = false;
         }
 
         void UpdateTerrain()
         {
             // Find observer camera.
+            // TODO: introduce small static class so that users can assign whatever camera (or list of cameras) as they like.
 #if UNITY_EDITOR
             Camera camera = Application.isPlaying || ForceMainCamera ? Camera.main : Camera.current;
 #else
@@ -169,13 +183,28 @@ namespace LevelGeneration.Terrain
 
         void RenderTerrain(ScriptableRenderContext context, Camera camera)
         {
+            s_DrawingVertices = 0;
+            s_DrawingIndices = 0;
+
             Stopwatch.Start(ref m_RenderTime);
+
+            // TODO
+            //CommandBuffer commandBuffer = CommandBufferPool.Get("Terrain CMD");
 
             for (int i = 0; i < k_NumBrickmapLevels; i++)
             {
                 m_MaterialProperties.SetColor("_ClipmapDebugColor", ColorBrickmapLevels ? k_BrickmapLevelDebugColors[i] : Color.white);
-                m_BrickmapLevels[i].Render(camera, Material, m_MaterialProperties);
+                m_BrickmapLevels[i].Render(null, camera, Material, m_MaterialProperties);
             }
+            
+            //cmd.DrawMultipleMeshes();
+
+            /*
+            context.ExecuteCommandBuffer(commandBuffer);
+            context.Submit();
+            commandBuffer.Clear();
+            CommandBufferPool.Release(commandBuffer);
+            */
 
             Stopwatch.End(ref m_RenderTime);
         }
@@ -185,7 +214,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public void AddShape(Shape shape)
         {
-            if (!m_IsInitialized)
+            if (!m_Initialized)
                 return;
 
             shape.ComputeVolume(out float3 position, out float3 volume);
@@ -199,7 +228,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public bool RemoveShape(int index)
         {
-            if (!m_IsInitialized)
+            if (!m_Initialized)
                 return false;
 
             if (index < m_Scene.NumShapes)
@@ -220,7 +249,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public bool ReplaceShape(int index, Shape shape)
         {
-            if (!m_IsInitialized)
+            if (!m_Initialized)
                 return false;
 
             if (index < m_Scene.NumShapes)
@@ -252,7 +281,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public void ClearShapes()
         {
-            if (!m_IsInitialized)
+            if (!m_Initialized)
                 return;
 
             foreach (Brickmap brickmap in m_BrickmapLevels)
@@ -264,12 +293,22 @@ namespace LevelGeneration.Terrain
         /// <summary>
         /// Sample the density cache at the given indices.
         /// </summary>
-        public float SampleDensity(float3 positionWS)
+        public float SampleDensity(float3 positionWS, bool fast)
         {
+            // Scale position by world scale.
             positionWS *= 1.0f / k_WorldScale;
 
-            // TODO
-            return EmptyDensityValue;
+            // Allocate a temporary density sampler.
+            DensitySampler sampler = new();
+            sampler.Allocate(m_Scene.Shapes, Allocator.Temp);
+
+            // Sample the SDF at the given position.
+            float value = sampler.Sample(positionWS, EmptyDensityValue, fast);
+
+            // Dispose the sampler and return the result.
+            sampler.Dispose();
+
+            return value;
         }
 
         /// <summary>
@@ -277,6 +316,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public float3 FindSurface(float3 origin, float3 direction)
         {
+            // TODO
             // We can use the cached density values to speed this up, if a brick we are visiting is not allocated we can skip it immediatly.
 
             // Pog http://www.cse.yorku.ca/~amana/research/grid.pdf
@@ -351,6 +391,7 @@ namespace LevelGeneration.Terrain
                 readonly Mesh mesh;
 
                 bool isUniformState;
+                byte neighborLOD;
                 bool densityModified;
                 bool remeshRequired;
 
@@ -376,17 +417,15 @@ namespace LevelGeneration.Terrain
 
                 public void Dispose()
                 {
-                    if (density.IsCreated)
-                        density.Dispose();
+                    density.Dispose();
+                    mesh.Clear();
                 }
 
-                public void Update(Camera observerCamera, List<Shape> shapes)
+                public void Update(Camera observerCamera, List<Shape> shapes, byte neighborLOD)
                 {
-                    // Cannot have this check if terrain casts shadows.
-                    //if (!InViewFrustum(observerCamera))
-                    //    return;
+                    this.neighborLOD = neighborLOD;
 
-                    // Can do something like this
+                    // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
                         return;
 
@@ -419,18 +458,24 @@ namespace LevelGeneration.Terrain
                     }
                 }
 
-                public void Render(Camera renderCamera, Material material, MaterialPropertyBlock mpb)
+                public void Render(CommandBuffer commandBuffer, Camera renderCamera, Material material, MaterialPropertyBlock mpb)
                 {
-                    // Cannot have this check if terrain casts shadows.
-                    //if (!InViewFrustum(renderCamera))
-                    //    return;
+                    // We can skip rendering if this is of uniform state.
+                    if (isUniformState)
+                        return;
 
-                    // Can do something like this
+                    // We can skip rendering far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(renderCamera))
                         return;
 
+                    mpb.SetInt("_PackedLODData", neighborLOD);
+
+                    s_DrawingVertices += (uint)mesh.vertexCount;
+                    s_DrawingIndices += mesh.GetIndexCount(0);
+
                     // TODO: I reckon this is garbage performance.
                     Graphics.DrawMesh(mesh, worldPosition, Quaternion.identity, material, 0, renderCamera, 0, mpb);
+                    //commandBuffer.DrawMesh(mesh, Matrix4x4.TRS(worldPosition, Quaternion.identity, Vector3.one), material, 0);
                 }
 
                 void EvaluateDensity(List<Shape> shapes)
@@ -451,7 +496,12 @@ namespace LevelGeneration.Terrain
                     double t = 0.0;
                     Stopwatch.Start(ref t);
 
-                    DensityEvaluationResult result = s_DensityEvaluator.Execute(FindIntersectingShapes(shapes), index, size, levelScale, worldScale);
+                    DensitySampler sampler = new();
+                    sampler.Allocate(FindIntersectingShapes(shapes), Allocator.TempJob);
+
+                    DensityEvaluationResult result = s_DensityEvaluator.Execute(sampler, index, size, levelScale, worldScale);
+
+                    sampler.Dispose();
 
                     Stopwatch.End(ref t);
                     s_AvgDensityEvalTime.AddTime(t);
@@ -465,8 +515,7 @@ namespace LevelGeneration.Terrain
                     if (isUniformState)
                     {
                         // Dispose density data if necessary.
-                        if (density.IsCreated)
-                            density.Dispose();
+                        density.Dispose();
                     }
                     else
                     {
@@ -474,11 +523,11 @@ namespace LevelGeneration.Terrain
                         if (!density.IsCreated)
                         {
                             int extendedSize = size + 3;
-                            density = new(extendedSize * extendedSize * extendedSize, Allocator.Persistent);
-                            
+                            density = new(extendedSize * extendedSize * extendedSize, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+
                             unsafe
                             {
-                                densityPtr = new IntPtr(density.GetUnsafePtr());
+                                densityPtr = new IntPtr(density.GetUnsafeReadOnlyPtr());
                             }
                         }
 
@@ -494,6 +543,12 @@ namespace LevelGeneration.Terrain
 
                     foreach (Shape shape in shapes)
                     {
+                        if (shape.IsGlobal)
+                        {
+                            intersectingShapes.Add(shape);
+                            continue;
+                        }
+
                         // Get brick volume from shape.
                         shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                         GetBrickVolumeFromAABB(size, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
@@ -539,17 +594,30 @@ namespace LevelGeneration.Terrain
             readonly int quarterBrickmapSize;  // One fourth the number of bricks per axis contained in this brick map.
             readonly int levelScale;           // The scale multiplier relative to the smallest brickmap level, derrived from the level index with the equation (2 ^ level).
 
-            readonly Dictionary<int3, Brick> bricks;
+            readonly Dictionary<int3, Brick> bricks; // TODO: indirection ptr map?
             readonly List<Shape> shapes;
 
             int3 originIndex;                  // The global brick index in which this map currently originates.
             int3 lowerGridOffset;              // The local offset of the brickmap contained within this one.
+
+            //bool isUpdating; // TODO: use this flag to spread density & meshing jobs over multiple frames. Do not allow the origin of higher brickmaps to shift until the lower one has finished updating.
 
             double updateTime;
             double majorUpdateTime;
             double renderTime;
 
             public int3 OriginIndex => originIndex;
+
+            // Order: x, -x, y, -y, z, -z
+            static readonly int3[] NeighbourOffsets =
+            {
+                new(1, 0, 0),
+                new(-1, 0, 0),
+                new(0, 1, 0),
+                new(0, -1, 0),
+                new(0, 0, 1),
+                new(0, 0, -1)
+            };
 
             public Brickmap(int brickmapSize, int brickSize, int levelIndex, float worldScale)
             {
@@ -577,6 +645,9 @@ namespace LevelGeneration.Terrain
             {
                 foreach (Brick brick in bricks.Values)
                     brick.Dispose();
+
+                bricks.Clear();
+                shapes.Clear();
             }
 
             public void Update(Camera observerCamera, float3 observerPosition, int3 lowerGridOriginIndex, SDFScene scene)
@@ -643,7 +714,7 @@ namespace LevelGeneration.Terrain
 
                 // Update bricks.
                 foreach (int3 brickIndex in bricks.Keys)
-                    bricks[brickIndex].Update(observerCamera, shapes);
+                    bricks[brickIndex].Update(observerCamera, shapes, PackNeighborLOD(brickIndex));
 
                 if (isMajorUpdate)
                     Stopwatch.End(ref majorUpdateTime);
@@ -651,12 +722,12 @@ namespace LevelGeneration.Terrain
                 Stopwatch.End(ref updateTime);
             }
 
-            public void Render(Camera renderCamera, Material material, MaterialPropertyBlock mpb)
+            public void Render(CommandBuffer commandBuffer, Camera renderCamera, Material material, MaterialPropertyBlock mpb)
             {
                 Stopwatch.Start(ref renderTime);
 
                 foreach (Brick brick in bricks.Values)
-                    brick.Render(renderCamera, material, mpb);
+                    brick.Render(commandBuffer, renderCamera, material, mpb);
 
                 Stopwatch.End(ref renderTime);
             }
@@ -700,6 +771,12 @@ namespace LevelGeneration.Terrain
 
                 foreach (Shape shape in scene.Shapes)
                 {
+                    if (shape.IsGlobal)
+                    {
+                        shapes.Add(shape);
+                        continue;
+                    }
+
                     // Get brick volume from shape.
                     shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                     GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
@@ -721,6 +798,19 @@ namespace LevelGeneration.Terrain
 
                     shapes.Add(shape);
                 }
+            }
+
+            byte PackNeighborLOD(int3 brickIndex)
+            {
+                byte neighborLOD = 0;
+
+                for (int i = 0; i < 6; i++)
+                {
+                    if (BrickOverlapsPreviousLevel(brickIndex + NeighbourOffsets[i]))
+                        neighborLOD |= (byte)(1 << i );
+                }
+
+                return neighborLOD;
             }
 
             int3 GetOriginIndex(float3 observerPosition)

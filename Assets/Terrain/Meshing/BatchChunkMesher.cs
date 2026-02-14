@@ -23,7 +23,7 @@ namespace LevelGeneration.Terrain.Meshing
 
             for (int i = 0; i < k_PoolSize; i++)
             {
-                m_MesherPool[i] = new ChunkMesher();
+                m_MesherPool[i] = new();
                 m_MesherPool[i].Allocate();
             }
 
@@ -32,8 +32,8 @@ namespace LevelGeneration.Terrain.Meshing
 
         public void Dispose()
         {
-            for (int i = 0; i < k_PoolSize; i++)
-                m_MesherPool[i].Dispose();
+            foreach (ChunkMesher mesher in m_MesherPool)
+                mesher.Dispose();
 
             m_TaskQueue = null;
         }
