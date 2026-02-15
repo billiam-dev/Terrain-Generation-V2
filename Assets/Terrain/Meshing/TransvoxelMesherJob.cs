@@ -29,6 +29,9 @@ namespace LevelGeneration.Terrain.Meshing
         [ReadOnly, NativeDisableUnsafePtrRestriction]
         public IntPtr densityPtr;
 
+        [ReadOnly, NativeDisableUnsafePtrRestriction]
+        public IntPtr transitionDensityPtr;
+
         // Output mesh data
         [NativeDisableParallelForRestriction]
         public NativeList<Vertex> vertices;
@@ -52,19 +55,17 @@ namespace LevelGeneration.Terrain.Meshing
                         MarchRegularCell(new int3(x, y, z));
 
             // March outer cells to create transition meshes.
-            /*
             if (!makeTransitionCells)
                 return;
 
             for (int i = 0; i < 6; i++)
             {
                 meshStartIndices[i] = new int2(vertices.Length, indices.Length);
-                    
+                
                 for (int x = 0; x < chunkSize; x++)
                     for (int y = 0; y < chunkSize; y++)
                         MarchTransitionCell(new int2(x, y), i);
             }
-            */
         }
 
         #region Regular Cells
@@ -75,7 +76,7 @@ namespace LevelGeneration.Terrain.Meshing
             // Fetch the 8 corner indices of the current cube.
             CubeCorners<float> density = new();
             for (int i = 0; i < 8; i++)
-                density[i] = SampleDensity(index + TransvoxelTables.CornerOffsets[i]);
+                density[i] = SampleCoreDensity(index + TransvoxelTables.CornerOffsets[i]);
 
             // Find the unique 'cube configuration' for this cell, using the density values at each corner point.
             // The cube configuration is used as a lookup in the trinangulation table, which tells the algorithm which vertices to connect for this specific set of density values.
@@ -201,23 +202,30 @@ namespace LevelGeneration.Terrain.Meshing
         #region Transition Cells
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void MarchTransitionCell(int2 cellIndex, int transitionIndex)
+        void MarchTransitionCell(int2 transitionCellIndex, int transitionIndex)
         {
             // Meshing order: (x, -x, y, -y, z, -z)
-            int3 index = transitionIndex switch
+            int3 coreIndex = transitionIndex switch
             {
-                0 => new(chunkSize - 1, cellIndex.x, cellIndex.y),
-                1 => new(0, cellIndex.x, cellIndex.y),
-                2 => new(cellIndex.x, chunkSize - 1, cellIndex.y),
-                3 => new(cellIndex.x, 0, cellIndex.y),
-                4 => new(cellIndex.x, cellIndex.y, chunkSize - 1),
-                5 => new(cellIndex.x, cellIndex.y, 0),
+                0 => new(chunkSize - 1, transitionCellIndex.x, transitionCellIndex.y),
+                1 => new(0, transitionCellIndex.x, transitionCellIndex.y),
+                2 => new(transitionCellIndex.x, chunkSize - 1, transitionCellIndex.y),
+                3 => new(transitionCellIndex.x, 0, transitionCellIndex.y),
+                4 => new(transitionCellIndex.x, transitionCellIndex.y, chunkSize - 1),
+                5 => new(transitionCellIndex.x, transitionCellIndex.y, 0),
                 _ => new(0, 0, 0)
             };
 
             TransitionCorners<float> density = new();
             for (int i = 0; i < 9; i++)
-                density[i] = SampleDensity(index + TransvoxelTables.TransitionCellOffsets[transitionIndex][i]);
+                density[i] = SampleCoreDensity(((coreIndex * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][i]) / 2);
+
+            // Detect cases where we need to look at the transition density data with i % 2 != 0.
+
+            //for (int i = 0; i < 8; i++)
+            //    density[i] = SampleCoreDensity(coreIndex + TransvoxelTables.CornerOffsets[i]);
+
+            //density[8] = SampleTransitionDensity(transitionCellIndex, transitionIndex);
 
             float3 packedDensity1 = new(density[0], density[1], density[2]);
             float3 packedDensity2 = new(density[5], density[8], density[7]);
@@ -227,8 +235,9 @@ namespace LevelGeneration.Terrain.Meshing
             int3 p2 = math.select(0, new int3(8, 16, 32), packedDensity2 < 0);
             int3 p3 = math.select(0, new int3(64, 128, 256), packedDensity3 < 0);
 
-            ushort caseCode = (ushort)(math.csum(p1) | math.csum(p2) | math.csum(p3)); // byte max value is 255, use 16 bits instead.
-            
+            // The max value of a byte (8 bits) is 255, I use a ushort (16 bits) because there are twice as many legal case codes for transitions.
+            ushort caseCode = (ushort)(math.csum(p1) | math.csum(p2) | math.csum(p3));
+
             if (caseCode == 0 || caseCode == 511)
                 return;
 
@@ -247,9 +256,9 @@ namespace LevelGeneration.Terrain.Meshing
                 ushort edgeCode = edgeCodes[i];
 
                 byte cornerIdx0 = (byte)((edgeCode >> 4) & 0x0F);
-                byte bornerIdx1 = (byte)(edgeCode & 0x0F);
+                byte cornerIdx1 = (byte)(edgeCode & 0x0F);
 
-                cellIndices[i] = AddTransitionVertex(ref density, index, cornerIdx0, bornerIdx1, transitionIndex);
+                cellIndices[i] = AddTransitionVertex(ref density, coreIndex, cornerIdx0, cornerIdx1, transitionIndex);
 
                 // TODO: Reuse vertices in transition cells.
                 /*
@@ -301,8 +310,8 @@ namespace LevelGeneration.Terrain.Meshing
             float t = d0 / (d0 - d1);
 
             // Get edge indices.
-            int3 i0 = index + (TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx0]]);
-            int3 i1 = index + (TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx1]]);
+            int3 i0 = ((index * 2) + TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx0]]) / 2;
+            int3 i1 = ((index * 2) + TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx1]]) / 2;
 
             // Make edge mask.
             int edgeMask = GetEdgeMask(i0, i1);
@@ -351,18 +360,18 @@ namespace LevelGeneration.Terrain.Meshing
         #region Utility
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly int GetEdgeMask(float3 i0, float3 i1)
+        readonly int GetEdgeMask(int3 i0, int3 i1)
         {
             if (!makeTransitionCells)
                 return 0;
 
             // Order: (x, -x, y, -y, z, -z)
-            return ((i0.x == chunkSize || i1.x == chunkSize) ? 1 : 0)
-                 | ((i0.x == 0 || i1.x == 0) ? 2 : 0)
-                 | ((i0.y == chunkSize || i1.y == chunkSize) ? 4 : 0)
-                 | ((i0.y == 0 || i1.y == 0) ? 8 : 0)
+            return ((i0.x == chunkSize || i1.x == chunkSize) ? 1  : 0)
+                 | ((i0.x == 0         || i1.x == 0        ) ? 2  : 0)
+                 | ((i0.y == chunkSize || i1.y == chunkSize) ? 4  : 0)
+                 | ((i0.y == 0         || i1.y == 0        ) ? 8  : 0)
                  | ((i0.z == chunkSize || i1.z == chunkSize) ? 16 : 0)
-                 | ((i0.z == 0 || i1.z == 0) ? 32 : 0);
+                 | ((i0.z == 0         || i1.z == 0        ) ? 32 : 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -370,32 +379,35 @@ namespace LevelGeneration.Terrain.Meshing
         {
             // Order: (x, -x, y, -y, z, -z)
             float3 delta = 0;
+            
+            float farDelta = chunkSize - 1.0f;
+            float closeDelta = 1.0f;
 
-            if ((edgeMask & 1) == 1 && position.x > (chunkSize - 1.0f))
+            if ((edgeMask & 1) == 1 && position.x >= farDelta)
             {
-                delta.x = (chunkSize - 1.0f) - position.x;
+                delta.x = farDelta - position.x;
             }
-            else if ((edgeMask & 2) == 2 && position.x < 1.0f)
+            else if ((edgeMask & 2) == 2 && position.x <= closeDelta)
             {
-                delta.x = 1.0f - position.x;
-            }
-
-            if ((edgeMask & 4) == 4 && position.y > (chunkSize - 1.0f))
-            {
-                delta.y = (chunkSize - 1.0f) - position.y;
-            }
-            else if ((edgeMask & 8) == 8 && position.y < 1.0f)
-            {
-                delta.y = 1.0f - position.y;
+                delta.x = closeDelta - position.x;
             }
 
-            if ((edgeMask & 16) == 16 && position.z > (chunkSize - 1.0f))
+            if ((edgeMask & 4) == 4 && position.y >= farDelta)
             {
-                delta.z = (chunkSize - 1.0f) - position.z;
+                delta.y = farDelta - position.y;
             }
-            else if ((edgeMask & 32) == 32 && position.z < 1.0f)
+            else if ((edgeMask & 8) == 8 && position.y <= closeDelta)
             {
-                delta.z = 1.0f - position.z;
+                delta.y = closeDelta - position.y;
+            }
+
+            if ((edgeMask & 16) == 16 && position.z >= farDelta)
+            {
+                delta.z = farDelta - position.z;
+            }
+            else if ((edgeMask & 32) == 32 && position.z <= closeDelta)
+            {
+                delta.z = closeDelta - position.z;
             }
 
             return delta;
@@ -404,13 +416,10 @@ namespace LevelGeneration.Terrain.Meshing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly float3 ComputeNormal(int3 coord)
         {
-            // TODO: we are getting bad normals, and occationally VERY bad normals creating glowy artefacts on screen.
-            // Fix this!
-
             float3 normal;
-            normal.x = SampleDensity(coord - Axis.right) - SampleDensity(coord + Axis.right);
-            normal.y = SampleDensity(coord - Axis.up) - SampleDensity(coord + Axis.up);
-            normal.z = SampleDensity(coord - Axis.forward) - SampleDensity(coord + Axis.forward);
+            normal.x = SampleCoreDensity(coord - Axis.right) - SampleCoreDensity(coord + Axis.right);
+            normal.y = SampleCoreDensity(coord - Axis.up) - SampleCoreDensity(coord + Axis.up);
+            normal.z = SampleCoreDensity(coord - Axis.forward) - SampleCoreDensity(coord + Axis.forward);
             return normal;
         }
 
@@ -433,12 +442,19 @@ namespace LevelGeneration.Terrain.Meshing
             return newPoint;
         }
 
-        unsafe readonly float SampleDensity(int3 cellIndex)
+        unsafe readonly float SampleCoreDensity(int3 cellIndex)
         {
             int index = FlattenIndex(cellIndex + 1, chunkSize + 3);
             float* ptr = (float*)densityPtr;
 
             return *(ptr + index);
+        }
+
+        unsafe readonly float SampleTransitionDensity(int2 cellIndex, int transitionIndex)
+        {
+            // TODO
+
+            return 0.0f;
         }
 
         readonly float3 TransformPosition(float3 p) => levelScale * worldScale * p;
@@ -691,7 +707,7 @@ namespace LevelGeneration.Terrain.Meshing
                     10 => corner3,
                     11 => corner7,
                     12 => corner9,
-                    _ => throw new System.IndexOutOfRangeException()
+                    _ => throw new IndexOutOfRangeException()
                 };
             }
             set
@@ -725,7 +741,7 @@ namespace LevelGeneration.Terrain.Meshing
                     case 8:
                         corner9 = value;
                         break;
-                    default: throw new System.IndexOutOfRangeException();
+                    default: throw new IndexOutOfRangeException();
                 }
             }
         }

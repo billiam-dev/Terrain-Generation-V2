@@ -218,8 +218,9 @@ namespace LevelGeneration.Terrain.Meshing
         public readonly int levelScale;
         public readonly float worldScale;
         public readonly IntPtr densityPtr;
+        public readonly IntPtr transitionDensityPtr;
 
-        public MeshingTask(Mesh mesh, Mesh[] transitionMeshes, int3 chunkIndex, int chunkSize, int levelScale, float worldScale, IntPtr densityPtr)
+        public MeshingTask(Mesh mesh, Mesh[] transitionMeshes, int3 chunkIndex, int chunkSize, int levelScale, float worldScale, IntPtr densityPtr, IntPtr transitionDensityPtr)
         {
             this.mesh = mesh;
             this.transitionMeshes = transitionMeshes;
@@ -228,6 +229,7 @@ namespace LevelGeneration.Terrain.Meshing
             this.levelScale = levelScale;
             this.worldScale = worldScale;
             this.densityPtr = densityPtr;
+            this.transitionDensityPtr = transitionDensityPtr;
         }
 
         public bool CanReplace(MeshingTask task) => chunkIndex.Equals(task.chunkIndex) && levelScale.Equals(task.levelScale);

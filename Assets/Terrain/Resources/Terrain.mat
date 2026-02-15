@@ -79,7 +79,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     - _SideAmbientOcclusion:
         m_Texture: {fileID: 2800000, guid: 701e68044eb5acf42bb974cfa0a93edf, type: 3}
-        m_Scale: {x: 1, y: 1}
+        m_Scale: {x: 0.25, y: 0.25}
         m_Offset: {x: 0, y: 0}
     - _SideMetallicAlbedo:
         m_Texture: {fileID: 2800000, guid: 72eed37fbea7dc84f8f312c741a9e924, type: 3}
@@ -156,7 +156,7 @@ Material:
     - _BaseColor: {r: 0.8862745, g: 0.8862745, b: 0.8862745, a: 1}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _SideColor: {r: 1, g: 1, b: 1, a: 1}
+    - _SideColor: {r: 0.8616352, g: 0.8616352, b: 0.8616352, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SurfaceAlbedo: {r: 1, g: 1, b: 1, a: 1}
     - _SurfaceColor: {r: 0.723923, g: 0.9245283, b: 0.73878264, a: 1}

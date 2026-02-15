@@ -44,7 +44,7 @@ namespace LevelGeneration.Terrain
             m_NegativeValueFound.Dispose();
         }
 
-        public DensityEvaluationResult Execute(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
+        public DensityEvaluationResult ComputeBrick(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
         {
             m_PositiveValueFound.Value = false;
             m_NegativeValueFound.Value = false;
@@ -73,7 +73,7 @@ namespace LevelGeneration.Terrain
             return new DensityEvaluationResult(m_DensityData, isEmpty || isFull, m_ExecutionTime);
         }
 
-        public DensityEvaluationResult ComputeTransitions(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
+        public DensityEvaluationResult ComputeBrickTransitions(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
         {
             TransitionDensityJob job = new()
             {
@@ -87,10 +87,10 @@ namespace LevelGeneration.Terrain
             };
 
             Stopwatch.Start(ref m_ExecutionTime);
-            job.ScheduleParallel(m_DensityArraySize, k_InnerloopBatchCount, default).Complete();
+            job.ScheduleParallel(m_TransitionDensityArraySize, k_InnerloopBatchCount, default).Complete();
             Stopwatch.End(ref m_ExecutionTime);
 
-            return new DensityEvaluationResult(m_DensityData, false, m_ExecutionTime);
+            return new DensityEvaluationResult(m_TransitionDensityData, false, m_ExecutionTime);
         }
 
         [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
@@ -163,7 +163,7 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public int levelScale;
 
             [WriteOnly]
-            public NativeArray<float> density; // (16 + 3 - 1) * 6 (I think). Order: x, -x, y, -y, z, -z
+            public NativeArray<float> density; // Size: (brickSize + 3 - 1) * 6
 
             public void Execute(int index)
             {

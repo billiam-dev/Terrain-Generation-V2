@@ -1,4 +1,5 @@
 // https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader
+// TODO: convert to shader graph?
 
 Shader "Terrain"
 {
@@ -14,7 +15,7 @@ Shader "Terrain"
         _SideAmbientOcclusion("Side Ambient Occlusion", 2D) = "white" {}
         _SideColor("Sides Color", Color) = (1, 1, 1, 1)
 
-        _SlopeFactor("Slope Factor", float) = 1.0
+        _SlopeFactor("Slope Factor", Range(1, 100)) = 1.0
     }
 
     SubShader
@@ -60,6 +61,7 @@ Shader "Terrain"
                 float4 positionHCS : SV_POSITION;
                 float3 positionWS  : TEXCOORD0;
                 float3 normalWS    : TEXCOORD1;
+                uint edgeMask      : TEXCOORD2;
             };
 
             TEXTURE2D(_SurfaceMetallicAlbedo);
@@ -100,13 +102,32 @@ Shader "Terrain"
                 float4 positionOS = IN.positionOS;
 
                 // Select secondary positions if the vertex edge mask is included in the LOD data.
-                if (((IN.edgeMask & _PackedLODData) == IN.edgeMask))
+                //if ((IN.edgeMask & _PackedLODData) == IN.edgeMask)
+                //    positionOS = IN.sPositionOS;
+
+                /*
+                if ((IN.edgeMask & _PackedLODData) == 1)
+                    positionOS = IN.sPositionOS;
+                if ((IN.edgeMask & _PackedLODData) == 2)
+                    positionOS = IN.sPositionOS;
+                if ((IN.edgeMask & _PackedLODData) == 4)
+                    positionOS = IN.sPositionOS;
+                if ((IN.edgeMask & _PackedLODData) == 8)
+                    positionOS = IN.sPositionOS;
+                if ((IN.edgeMask & _PackedLODData) == 16)
+                    positionOS = IN.sPositionOS;
+                if ((IN.edgeMask & _PackedLODData) == 32)
+                    positionOS = IN.sPositionOS;
+                */
+
+                if ((IN.edgeMask & _PackedLODData) != 0)
                     positionOS = IN.sPositionOS;
 
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(positionOS.xyz);
                 OUT.positionWS = mul(unity_ObjectToWorld, positionOS).xyz;
                 OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS.xyz);
+                OUT.edgeMask = IN.edgeMask;
                 return OUT;
             }
 
@@ -127,10 +148,29 @@ Shader "Terrain"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                /*
+                float4 col = float4(0, 0, 0, 0);
+
+                if ((IN.edgeMask & 1) == 1)
+                    col.r += 0.5f;
+                if ((IN.edgeMask & 2) == 2)
+                    col.g += 0.5f;
+                if ((IN.edgeMask & 4) == 4)
+                    col.b += 0.5f;
+                if ((IN.edgeMask & 8) == 8)
+                    col.r += 0.25f;
+                if ((IN.edgeMask & 16) == 16)
+                    col.g += 0.25f;
+                if ((IN.edgeMask & 32) == 32)
+                    col.b += 0.25f;
+
+                return col;
+                */
+
                 // Compute materials.
                 half4 surfaceColor = ComputeTriplanarTexture(_SurfaceMetallicAlbedo, sampler_SurfaceMetallicAlbedo, _SurfaceMetallicAlbedo_ST, IN.positionWS, IN.normalWS);
                 half4 surfaceNormal = ComputeTriplanarTexture(_SurfaceNormal, sampler_SurfaceNormal, _SurfaceNormal_ST, IN.positionWS, IN.normalWS);
-                half surfaceAO = ComputeTriplanarTexture(_SurfaceAmbientOcclusion, sampler_SideMetallicAlbedo, _SideMetallicAlbedo_ST, IN.positionWS, IN.normalWS).a;
+                half surfaceAO = ComputeTriplanarTexture(_SurfaceAmbientOcclusion, sampler_SideAmbientOcclusion, _SideAmbientOcclusion_ST, IN.positionWS, IN.normalWS).a;
                 
                 half4 sideColor = ComputeTriplanarTexture(_SideMetallicAlbedo, sampler_SideMetallicAlbedo, _SideMetallicAlbedo_ST, IN.positionWS, IN.normalWS);
                 half4 sideNormal = ComputeTriplanarTexture(_SideNormal, sampler_SideNormal, _SideNormal_ST, IN.positionWS, IN.normalWS);
