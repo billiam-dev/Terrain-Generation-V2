@@ -5,8 +5,11 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEditor;
+using UnityEditor.PackageManager.UI;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.Rendering;
+using UnityEngine.UIElements;
 
 namespace LevelGeneration.Terrain
 {
@@ -194,7 +197,7 @@ namespace LevelGeneration.Terrain
             for (int i = 0; i < k_NumBrickmapLevels; i++)
             {
                 m_MaterialProperties.SetColor("_ClipmapDebugColor", ColorBrickmapLevels ? k_BrickmapLevelDebugColors[i] : Color.white);
-                m_BrickmapLevels[i].Render(null, camera, Material, m_MaterialProperties);
+                m_BrickmapLevels[i].Render(camera, Material, m_MaterialProperties);
             }
             
             //cmd.DrawMultipleMeshes();
@@ -380,50 +383,75 @@ namespace LevelGeneration.Terrain
                 class DensityCache : IDisposable
                 {
                     NativeArray<float> coreDensity;
-                    IntPtr coreDensityPtr;
-
-                    NativeArray<float> transitionDensity;
-                    IntPtr transitionDensityPtr;
+                    NativeArray<float>[] transitionDensities;
 
                     bool isAllocated;
 
-                    public IntPtr CoreDensityPointer => coreDensityPtr;
+                    public bool IsAllocated => isAllocated;
+
+                    public unsafe IntPtr GetCoreDensityPointer() => new(coreDensity.GetUnsafeReadOnlyPtr());
                     
-                    public IntPtr TransitionDensityPointer => transitionDensityPtr;
+                    public unsafe IntPtr GetTransitionDensityPointer(int index) => new(transitionDensities[index].GetUnsafeReadOnlyPtr());
 
-                    public unsafe void Allocate(int size, bool allocateTransitions)
+                    public unsafe void Allocate(int brickSize, bool allocTransitions)
                     {
-                        if (isAllocated)
-                            return;
-
-                        int extendedSize = size + 3;
-
-                        coreDensity = new(extendedSize * extendedSize * extendedSize, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-                        coreDensityPtr = new IntPtr(coreDensity.GetUnsafeReadOnlyPtr());
-
-                        if (allocateTransitions)
+                        if (!coreDensity.IsCreated)
                         {
-                            transitionDensity = new(size * size * 6, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-                            transitionDensityPtr = new IntPtr(transitionDensity.GetUnsafeReadOnlyPtr());
+                            int extendedSize = brickSize + 3;
+                            coreDensity = new(extendedSize * extendedSize * extendedSize, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
                         }
+
+                        if (allocTransitions)
+                            transitionDensities = new NativeArray<float>[6];
 
                         isAllocated = true;
                     }
 
                     public void Dispose()
                     {
-                        if (!isAllocated)
-                            return;
-
                         coreDensity.Dispose();
-                        transitionDensity.Dispose();
+
+                        if (transitionDensities != null)
+                        {
+                            for (int i = 0; i < 6; i++)
+                                transitionDensities[i].Dispose();
+
+                            transitionDensities = null;
+                        }
 
                         isAllocated = false;
                     }
 
-                    public void CopyCoreDensity(NativeArray<float> density) => coreDensity.CopyFrom(density);
+                    public void AllocateTransition(int index, int brickSize)
+                    {
+                        if (!transitionDensities[index].IsCreated)
+                        {
+                            // The transition size is twice the brick size plus one to complete the > edge cells and one either side for normal vectors.
+                            // We need three rows of this data for normals on the remaining axis so the size is:
+                            // ((brickSize * 2) + 3) * 3
+
+                            int transitionSize = (brickSize * 2) + 3;
+                            transitionDensities[index] = new(transitionSize * transitionSize * 3, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                        }
+                    }
+
+                    public void DisposeTransition(int index)
+                    {
+                        if (transitionDensities[index].IsCreated)
+                            transitionDensities[index].Dispose();
+                    }
+
+                    public void CopyCoreDensity(NativeArray<float> density)
+                    {
+                        if (coreDensity.IsCreated)
+                            coreDensity.CopyFrom(density);
+                    }
                     
-                    public void CopyTransitionDensity(NativeArray<float> density) => transitionDensity.CopyFrom(density);
+                    public void CopyTransitionDensity(NativeArray<float> density, int index)
+                    {
+                        if (transitionDensities[index].IsCreated)
+                            transitionDensities[index].CopyFrom(density);
+                    }
 
                     public float Sample(int3 index, int size)
                     {
@@ -439,89 +467,111 @@ namespace LevelGeneration.Terrain
 
                     bool isAllocated;
 
-                    public void Allocate(Bounds bounds, bool allocTransitionMeshes)
-                    {
-                        if (isAllocated)
-                            return;
+                    public bool IsAllocated => isAllocated;
 
+                    public void Allocate(Bounds bounds, bool allocTransitions)
+                    {
                         coreMesh = new()
                         {
                             bounds = bounds
                         };
 
-                        if (allocTransitionMeshes)
-                        {
+                        if (allocTransitions)
                             transitionMeshes = new Mesh[6];
-
-                            for (int i = 0; i < 6; i++)
-                            {
-                                transitionMeshes[i] = new Mesh()
-                                {
-                                    bounds = bounds
-                                };
-                            }
-                        }
 
                         isAllocated = true;
                     }
 
                     public void Dispose()
                     {
-                        if (!isAllocated)
-                            return;
-
                         DestroyImmediate(coreMesh);
 
                         if (transitionMeshes != null)
                         {
                             for (int i = 0; i < 6; i++)
                                 DestroyImmediate(transitionMeshes[i]);
+
+                            transitionMeshes = null;
                         }
 
                         isAllocated = false;
                     }
 
-                    public void Remesh(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr, IntPtr transitionDensityPtr)
+                    public void AllocateTransition(int index, Bounds bounds)
                     {
-                        if (!isAllocated)
-                            return;
+                        if (transitionMeshes[index] == null)
+                        {
+                            transitionMeshes[index] = new Mesh()
+                            {
+                                bounds = bounds
+                            };
+                        }
+                    }
 
+                    public void DisposeTransition(int index)
+                    {
+                        if (transitionMeshes[index] != null)
+                            DestroyImmediate(transitionMeshes[index]);
+                    }
+
+                    public void RemeshCore(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr)
+                    {
                         s_Mesher.QueueRemeshTask(new MeshingTask(
                             coreMesh,
-                            transitionMeshes,
+                            index,
+                            size,
+                            levelScale,
+                            worldScale,
+                            densityPtr
+                        ));
+                    }
+
+                    public void RemeshTransition(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr, int transitionIndex)
+                    {
+                        s_Mesher.QueueRemeshTask(new MeshingTask(
+                            transitionMeshes[transitionIndex],
                             index,
                             size,
                             levelScale,
                             worldScale,
                             densityPtr,
-                            transitionDensityPtr
+                            transitionIndex
                         ));
                     }
 
                     public void Draw(float3 position, Material material, MaterialPropertyBlock mpb, Camera camera, byte neighborLOD)
                     {
-                        if (!isAllocated)
+                        // Set neighbour LOD data for this brick.
+                        mpb.SetInt("_PackedLODData", neighborLOD);
+                        
+                        // Draw core mesh.
+                        mpb.SetColor("_TransitionDebugColor", Color.white);
+                        DrawMesh(coreMesh, position, material, mpb, camera);
+
+                        /*
+                        // Draw transition meshes.
+                        if (transitionMeshes == null)
                             return;
 
-                        mpb.SetInt("_PackedLODData", neighborLOD);
+                        mpb.SetColor("_TransitionDebugColor", Color.red);
 
-                        // TODO: Graphics.DrawMesh mighe be bad performance.
-
-                        Graphics.DrawMesh(coreMesh, position, Quaternion.identity, material, 0, camera, 0, mpb);
-
-                        if (transitionMeshes != null)
+                        for (int i = 0; i < 6; i++)
                         {
-                            for (int i = 0; i < 6; i++)
+                            if ((neighborLOD & (1 << i)) != 0)
                             {
-                                if ((neighborLOD & (1 << i)) == 0)
-                                    continue;
-
-                                Graphics.DrawMesh(transitionMeshes[i], position, Quaternion.identity, material, 0, camera, 0, mpb);
+                                if (transitionMeshes[i] != null)
+                                    DrawMesh(transitionMeshes[i], position, material, mpb, camera);
                             }
                         }
+                        */
+                    }
 
-                        s_DrawingVertices += (uint)coreMesh.vertexCount;
-                        s_DrawingIndices += coreMesh.GetIndexCount(0);
+                    void DrawMesh(Mesh mesh, float3 position, Material material, MaterialPropertyBlock mpb, Camera camera)
+                    {
+                        Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb); // TODO: Graphics.DrawMesh might be bad performance. Command buffers may be better.
+
+                        s_DrawingVertices += (uint)mesh.vertexCount;
+                        s_DrawingIndices += mesh.GetIndexCount(0);
                     }
                 }
 
@@ -532,16 +582,16 @@ namespace LevelGeneration.Terrain
 
                 readonly float3 worldPosition;
                 readonly float3 worldSize;
-
                 readonly Bounds bounds;
 
-                readonly DensityCache density;
+                readonly DensityCache densityCache;
                 readonly BrickRenderer renderer;
 
+                DensitySampler densitySampler;
+
                 bool isUniformState;
-                byte neighborLOD;
                 bool densityModified;
-                bool remeshRequired;
+                byte neighborLOD;
 
                 public Brick(int3 index, int size, int levelScale, float worldScale)
                 {
@@ -552,45 +602,134 @@ namespace LevelGeneration.Terrain
 
                     worldSize = worldScale * levelScale * size;
                     worldPosition = worldSize * index;
-
                     bounds = new(worldSize * 0.5f, worldSize);
-                    
-                    density = new();
+
+                    densityCache = new();
                     renderer = new();
+
+                    densitySampler = new();
 
                     isUniformState = true;
                     densityModified = false;
-                    remeshRequired = false;
+                    neighborLOD = 0x0000_0000;
                 }
 
                 public void Dispose()
                 {
-                    density.Dispose();
-                    renderer.Dispose();
+                    if (densityCache.IsAllocated)
+                        densityCache.Dispose();
+
+                    if (renderer.IsAllocated)
+                        renderer.Dispose();
                 }
 
                 public void Update(Camera observerCamera, List<Shape> shapes, byte neighborLOD)
                 {
+                    // Update neighbour LOD data.
                     this.neighborLOD = neighborLOD;
 
                     // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
                         return;
 
+                    bool samplerIsAllocated = false;
+
                     if (densityModified)
                     {
-                        EvaluateDensity(shapes);
+                        // Validate that there are shapes intersecting this brick.
+                        if (shapes.Count == 0)
+                        {
+                            // If we are not already uniform, dispose this object.
+                            if (!isUniformState)
+                                Dispose();
+
+                            isUniformState = true;
+                        }
+                        else
+                        {
+                            // Allocate a density sampler.
+                            densitySampler.Allocate(FindIntersectingShapes(shapes), Allocator.TempJob);
+                            samplerIsAllocated = true;
+
+                            // Evaluate the core density function.
+                            double t = 0.0;
+                            Stopwatch.Start(ref t);
+                            DensityEvaluationResult result = s_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
+                            Stopwatch.End(ref t);
+                            s_AvgDensityEvalTime.AddTime(t);
+
+                            // If the result is not uniform, continue to recompute the mesh.
+                            // Else, if this brick is not already uniform, ensure it is disposed.
+
+                            if (!result.isUniformState)
+                            {
+                                // Ensure core density is allocated and copy density result.
+                                if (!densityCache.IsAllocated)
+                                    densityCache.Allocate(size, levelScale > 1);
+
+                                densityCache.CopyCoreDensity(result.density);
+
+                                // Ensure renderer is allocated and schedule core remeshing task.
+                                if (!renderer.IsAllocated)
+                                    renderer.Allocate(bounds, levelScale > 1);
+
+                                renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.GetCoreDensityPointer());
+                            }
+                            else if (!isUniformState)
+                            {
+                                Dispose();
+                            }
+
+                            // Set new uniformity status.
+                            isUniformState = result.isUniformState;
+                        }
+
+                        // Evaluate transitions.
+                        // TODO: need to evaluate when scene origin shifts aswell, this will require sophisticated logic to determine which transitions need to be remeshed to avoid repeating work.
+                        /*
+                        if (!isUniformState && levelScale > 1)
+                        {
+                            for (int i = 0; i < 6; i++)
+                            {
+                                if ((neighborLOD & (1 << i)) != 0)
+                                {
+                                    // If we have not yet allocated the density sampler, do so now.
+                                    if (!samplerIsAllocated)
+                                    {
+                                        densitySampler.Allocate(FindIntersectingShapes(shapes), Allocator.TempJob);
+                                        samplerIsAllocated = true;
+                                    }
+
+                                    // Evaluate the transition density.
+                                    DensityEvaluationResult result = s_DensityEvaluator.ComputeTransition(densitySampler, index, size, levelScale, worldScale, i);
+
+                                    // Ensure transition density is allocated and copy the result.
+                                    densityCache.AllocateTransition(i, size);
+                                    densityCache.CopyTransitionDensity(result.density, i);
+
+                                    // Ensure transition mesh is allocated and queue a meshing task.
+                                    renderer.AllocateTransition(i, bounds);
+                                    renderer.RemeshTransition(index, size, levelScale, worldScale, densityCache.GetTransitionDensityPointer(i), i);
+                                }
+                                else
+                                {
+                                    densityCache.DisposeTransition(i);
+                                    renderer.DisposeTransition(i);
+                                }
+                            }
+                        }
+                        */
+
+                        // Disable densityModified flag.
                         densityModified = false;
                     }
 
-                    if (remeshRequired)
-                    {
-                        renderer.Remesh(index, size, levelScale, worldScale, density.CoreDensityPointer, density.TransitionDensityPointer);
-                        remeshRequired = false;
-                    }
+                    // Dispose the density sampler, if necessary.
+                    if (samplerIsAllocated)
+                        densitySampler.Dispose();
                 }
 
-                public void Render(CommandBuffer commandBuffer, Camera renderCamera, Material material, MaterialPropertyBlock mpb)
+                public void Render(Camera renderCamera, Material material, MaterialPropertyBlock mpb)
                 {
                     // We can skip rendering if this is of uniform state.
                     if (isUniformState)
@@ -601,65 +740,6 @@ namespace LevelGeneration.Terrain
                         return;
 
                     renderer.Draw(worldPosition, material, mpb, renderCamera, neighborLOD);
-
-                    //commandBuffer.DrawMesh(mesh, Matrix4x4.TRS(worldPosition, Quaternion.identity, Vector3.one), material, 0);
-                }
-
-                void EvaluateDensity(List<Shape> shapes)
-                {
-                    // If there are no intersecting shapes, this brick is of uniform state.
-                    int numShapes = shapes.Count;
-
-                    if (numShapes == 0)
-                    {
-                        if (!isUniformState)
-                            remeshRequired = true;
-
-                        isUniformState = true;
-                        return;
-                    }
-
-                    DensitySampler sampler = new();
-                    sampler.Allocate(FindIntersectingShapes(shapes), Allocator.TempJob);
-
-                    // Execute density evaluation.
-                    double t = 0.0;
-                    Stopwatch.Start(ref t);
-                    DensityEvaluationResult result = s_DensityEvaluator.ComputeBrick(sampler, index, size, levelScale, worldScale);
-                    Stopwatch.End(ref t);
-                    s_AvgDensityEvalTime.AddTime(t);
-
-                    // We do not need to do anything with bricks that are already of uniform state.
-                    if (isUniformState && result.isUniformState)
-                    {
-                        sampler.Dispose();
-                        return;
-                    }
-
-                    isUniformState = result.isUniformState;
-                    remeshRequired = !isUniformState;
-
-                    if (!isUniformState)
-                    {
-                        // Allocate and copy density data.
-                        density.Allocate(size, levelScale > 1);
-                        density.CopyCoreDensity(result.density);
-
-                        if (levelScale > 1)
-                        {
-                            result = s_DensityEvaluator.ComputeBrickTransitions(sampler, index, size, levelScale, worldScale);
-                            density.CopyTransitionDensity(result.density);
-                        }
-
-                        // Allocate renderer.
-                        renderer.Allocate(bounds, levelScale > 1);
-                    }
-                    else
-                    {
-                        Dispose();
-                    }
-
-                    sampler.Dispose();
                 }
 
                 List<Shape> FindIntersectingShapes(List<Shape> shapes)
@@ -678,13 +758,11 @@ namespace LevelGeneration.Terrain
                         shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                         GetBrickVolumeFromAABB(size, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
 
-                        // Account for density data overflowing into adjacent bricks.
+                        // Account for density data overflowing into adjacent bricks by extending the brick volume by 1 on each side.
                         initialIndex -= 1;
                         volume += 2;
 
-                        // ^ Note: this causes jobs to be queued in bricks that we know won't be allocated TODO!!
-
-                        // If brick index is within the volume, add to the.
+                        // If brick index is within the volume, add to the list.
                         if (math.all(index >= initialIndex) && math.all(index < initialIndex + volume))
                             intersectingShapes.Add(shape);
                     }
@@ -701,9 +779,9 @@ namespace LevelGeneration.Terrain
 
                 public void MarkAsModified() => densityModified = true;
 
-                public float SampleCache(int3 index) => density.Sample(index, size);
+                public float SampleCache(int3 index) => densityCache.Sample(index, size);
 
-                public bool IntersecsSurface => !isUniformState;
+                public bool IntersectingSurface => !isUniformState;
             }
 
             readonly int brickmapSize;         // Number of bricks per axis contained in this brick map.
@@ -843,12 +921,12 @@ namespace LevelGeneration.Terrain
                 Stopwatch.End(ref updateTime);
             }
 
-            public void Render(CommandBuffer commandBuffer, Camera renderCamera, Material material, MaterialPropertyBlock mpb)
+            public void Render(Camera renderCamera, Material material, MaterialPropertyBlock mpb)
             {
                 Stopwatch.Start(ref renderTime);
 
                 foreach (Brick brick in bricks.Values)
-                    brick.Render(commandBuffer, renderCamera, material, mpb);
+                    brick.Render(renderCamera, material, mpb);
 
                 Stopwatch.End(ref renderTime);
             }
@@ -984,7 +1062,7 @@ namespace LevelGeneration.Terrain
                 return false;
             }
 
-            public bool BrickIntersectsSurface(int3 brickIndex) => bricks.ContainsKey(brickIndex) && bricks[brickIndex].IntersecsSurface;
+            public bool BrickIntersectsSurface(int3 brickIndex) => bricks.ContainsKey(brickIndex) && bricks[brickIndex].IntersectingSurface;
 
             public float SampleCache(int3 brickIndex, int3 cellIndex)
             {

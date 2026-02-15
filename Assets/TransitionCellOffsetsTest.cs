@@ -1,4 +1,5 @@
 using Unity.Mathematics;
+using UnityEditor;
 using UnityEngine;
 
 // Temp
@@ -17,17 +18,27 @@ public class TransitionCellOffsetsTest : MonoBehaviour
 
     void OnDrawGizmos()
     {
-        Gizmos.color = Color.red;
-
         for (int transitionIndex = 0; transitionIndex < 6; transitionIndex++)
-            DrawIndices(transitionIndex);
+            DrawIndices(transitionIndex, Color.red);
     }
 
-    void DrawIndices(int transitionIndex)
+    void DrawIndices(int transitionIndex, Color color)
     {
+        float3 centre = new(transitionIndex * 8, 0, 0);
+
+        color.a = 0.1f;
+        Gizmos.color = color;
+        Gizmos.DrawCube(centre + 1.0f, Vector3.one * 2.0f);
+
+        color.a = 1.0f;
+        Gizmos.color = color;
+
         for (int i = 0; i < 9; i++)
         {
-            Gizmos.DrawSphere((float3)TransitionCellOffsets[transitionIndex][i] + new float3(transitionIndex * 8, 0, 0), 0.05f);
+            float3 pos = (float3)TransitionCellOffsets[transitionIndex][i] + centre;
+
+            Gizmos.DrawSphere(pos, 0.05f);
+            Handles.Label(pos + new float3(0, 0.1f, 0), i.ToString());
         }
     }
 }

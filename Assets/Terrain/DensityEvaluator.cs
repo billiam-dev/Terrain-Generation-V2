@@ -26,9 +26,10 @@ namespace LevelGeneration.Terrain
             int extendedBrickSize = brickSize + 3;
 
             m_DensityArraySize = extendedBrickSize * extendedBrickSize * extendedBrickSize;
-            m_TransitionDensityArraySize = brickSize * brickSize * 6;
-
             m_DensityData = new(m_DensityArraySize, Allocator.Persistent);
+
+            int transitionSize = (brickSize * 2) + 3;
+            m_TransitionDensityArraySize = transitionSize * transitionSize * 3;
             m_TransitionDensityData = new(m_TransitionDensityArraySize, Allocator.Persistent);
 
             m_PositiveValueFound = new(Allocator.Persistent);
@@ -44,7 +45,7 @@ namespace LevelGeneration.Terrain
             m_NegativeValueFound.Dispose();
         }
 
-        public DensityEvaluationResult ComputeBrick(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
+        public DensityEvaluationResult ComputeCore(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
         {
             m_PositiveValueFound.Value = false;
             m_NegativeValueFound.Value = false;
@@ -55,7 +56,7 @@ namespace LevelGeneration.Terrain
                 initialDensity = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
-                extendedBrickSize = brickSize + 3,
+                pointsPerAxis = brickSize + 3,
                 levelScale = levelScale,
                 worldScale = worldScale,
                 density = m_DensityData,
@@ -73,7 +74,7 @@ namespace LevelGeneration.Terrain
             return new DensityEvaluationResult(m_DensityData, isEmpty || isFull, m_ExecutionTime);
         }
 
-        public DensityEvaluationResult ComputeBrickTransitions(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
+        public DensityEvaluationResult ComputeTransition(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale, int transitionIndex)
         {
             TransitionDensityJob job = new()
             {
@@ -81,8 +82,10 @@ namespace LevelGeneration.Terrain
                 initialDensity = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
+                pointsPerAxis = (brickSize * 2) + 3,
                 levelScale = levelScale,
                 worldScale = worldScale,
+                transitionIndex = transitionIndex,
                 density = m_DensityData
             };
 
@@ -100,7 +103,7 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public float initialDensity;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
-            [ReadOnly] public int extendedBrickSize;
+            [ReadOnly] public int pointsPerAxis;
             [ReadOnly] public float worldScale;
             [ReadOnly] public int levelScale;
 
@@ -120,14 +123,14 @@ namespace LevelGeneration.Terrain
 
                 coord.x = index;
 
-                coord.z = coord.x / (extendedBrickSize * extendedBrickSize);
-                coord.x -= coord.z * extendedBrickSize * extendedBrickSize;
+                coord.z = coord.x / (pointsPerAxis * pointsPerAxis);
+                coord.x -= coord.z * pointsPerAxis * pointsPerAxis;
 
-                coord.y = coord.x / extendedBrickSize;
-                coord.x -= coord.y * extendedBrickSize;
+                coord.y = coord.x / pointsPerAxis;
+                coord.x -= coord.y * pointsPerAxis;
 
                 // Derrive world position from iteration index.
-                float3 worldPosition = levelScale * worldScale * (float3)((brickIndex * brickSize) + (coord - 1));
+                float3 worldPosition = levelScale * worldScale * (float3)(brickIndex * brickSize + coord - 1);
 
                 // Sample the SDF.
                 float newDensity = densitySampler.Sample(worldPosition, initialDensity, levelScale > 1);
@@ -138,16 +141,10 @@ namespace LevelGeneration.Terrain
                 // Update positive / negative value flags.
                 if (math.all(coord > 0) && math.all(coord <= brickSize + 2))
                 {
-                    if (newDensity > 0)
-                    {
-                        if (positiveValueFound.Value == false)
-                            positiveValueFound.Value = true;
-                    }
+                    if (newDensity > 0.0f)
+                        positiveValueFound.Value = true;
                     else
-                    {
-                        if (negativeValueFound.Value == false)
-                            negativeValueFound.Value = true;
-                    }
+                        negativeValueFound.Value = true;
                 }
             }
         }
@@ -159,11 +156,13 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public float initialDensity;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
+            [ReadOnly] public int pointsPerAxis;
             [ReadOnly] public float worldScale;
             [ReadOnly] public int levelScale;
+            [ReadOnly] public int transitionIndex;
 
             [WriteOnly]
-            public NativeArray<float> density; // Size: (brickSize + 3 - 1) * 6
+            public NativeArray<float> density;
 
             public void Execute(int index)
             {
@@ -171,30 +170,37 @@ namespace LevelGeneration.Terrain
 
                 coord.x = index;
 
-                coord.z = coord.x / (brickSize * brickSize);
-                coord.x -= coord.z * brickSize * brickSize;
+                coord.z = coord.x / (pointsPerAxis * pointsPerAxis);
+                coord.x -= coord.z * pointsPerAxis * pointsPerAxis;
 
-                coord.y = coord.x / brickSize;
-                coord.x -= coord.y * brickSize;
+                coord.y = coord.x / pointsPerAxis;
+                coord.x -= coord.y * pointsPerAxis;
+
+                // x = 0 -> pointsPerAxis (-1)
+                // y = 0 -> pointsPerAxis (-1)
+                // z = 0 -> 3 (-1)
 
                 // Order: (x, -x, y, -y, z, -z)
-                int transitionIndex = coord.z;
                 coord = transitionIndex switch
                 {
-                    0 => new(brickSize - 1, coord.x, coord.y),
-                    1 => new(0, coord.x, coord.y),
-                    2 => new(coord.x, brickSize - 1, coord.y),
-                    3 => new(coord.x, 0, coord.y),
-                    4 => new(coord.x, coord.y, brickSize - 1),
-                    5 => new(coord.x, coord.y, 0),
-                    _ => new(0, 0, 0)
+                    0 => new(brickSize - 1 + coord.z, coord.y, coord.x),
+                    1 => new(0 + coord.z, coord.y, coord.x),
+                    2 => new(),
+                    3 => new(),
+                    4 => new(),
+                    5 => new(),
+                    _ => new()
                 };
 
                 // Derrive world position from iteration index.
-                float3 worldPosition = levelScale * worldScale * (float3)((brickIndex * brickSize) + (coord - 1));
+
+                // Coord range is double-precision compared to core evaluation jobs for this level.
+                // Therefore we multiply the rest of the calculation by 2 to match.
+
+                float3 worldPosition = (levelScale * worldScale * (float3)(brickIndex * brickSize)) + (coord - 1);
 
                 // Store the new density.
-                density[index] = densitySampler.Sample(worldPosition, initialDensity, levelScale > 1);
+                density[index] = densitySampler.Sample(worldPosition, initialDensity, levelScale > 2);
             }
         }
     }

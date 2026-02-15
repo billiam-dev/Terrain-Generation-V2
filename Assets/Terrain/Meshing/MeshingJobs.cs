@@ -14,16 +14,17 @@ namespace LevelGeneration.Terrain.Meshing
     // Transvoxel Tables: https://github.com/EricLengyel/Transvoxel/blob/main/Transvoxel.cpp
     // Implementation reference: https://github.com/bbQsauce5/transvoxel-unity/blob/main/Runtime/Mesher/TransvoxelTables.cs, https://github.com/Fobri/Terraxel-Unity/tree/main
 
+    #region JOBs
+
     [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    public struct TransvoxelMesherJob : IJob
+    public struct CoreMeshingJob : IJob
     {
         // Input terrain data
         [ReadOnly] public int3 chunkIndex;            // Index into the density brick map at this clipmap level.
         [ReadOnly] public int chunkSize;              // Number of cells per axis in a density chunk.
-        [ReadOnly] public int levelScale;             // ham
+        [ReadOnly] public int levelScale;             // The scale of the underlying density data, based on the brickmap level.
         [ReadOnly] public float worldScale;           // World scale of a single cell, determines the scale of the entire terrain.
         [ReadOnly] public float padding;              // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
-        [ReadOnly] public bool makeTransitionCells;
 
         // Pointer to underlying density data. Points per axis = chunkSize + 3.
         [ReadOnly, NativeDisableUnsafePtrRestriction]
@@ -39,9 +40,6 @@ namespace LevelGeneration.Terrain.Meshing
         [NativeDisableParallelForRestriction]
         public NativeList<ushort> indices;
 
-        [NativeDisableParallelForRestriction]
-        public NativeArray<int2> meshStartIndices;
-
         // Reusable cells array
         [NativeDisableParallelForRestriction]
         public NativeArray<ReuseCellVertexIndices> vertexIndices;
@@ -52,31 +50,16 @@ namespace LevelGeneration.Terrain.Meshing
             for (int x = 0; x < chunkSize; x++)
                 for (int y = 0; y < chunkSize; y++)
                     for (int z = 0; z < chunkSize; z++)
-                        MarchRegularCell(new int3(x, y, z));
-
-            // March outer cells to create transition meshes.
-            if (!makeTransitionCells)
-                return;
-
-            for (int i = 0; i < 6; i++)
-            {
-                meshStartIndices[i] = new int2(vertices.Length, indices.Length);
-                
-                for (int x = 0; x < chunkSize; x++)
-                    for (int y = 0; y < chunkSize; y++)
-                        MarchTransitionCell(new int2(x, y), i);
-            }
+                        MarchCell(new int3(x, y, z));
         }
 
-        #region Regular Cells
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void MarchRegularCell(int3 index)
+        void MarchCell(int3 index)
         {
             // Fetch the 8 corner indices of the current cube.
             CubeCorners<float> density = new();
             for (int i = 0; i < 8; i++)
-                density[i] = SampleCoreDensity(index + TransvoxelTables.CornerOffsets[i]);
+                density[i] = SampleDensity(index + TransvoxelTables.CornerOffsets[i]);
 
             // Find the unique 'cube configuration' for this cell, using the density values at each corner point.
             // The cube configuration is used as a lookup in the trinangulation table, which tells the algorithm which vertices to connect for this specific set of density values.
@@ -124,7 +107,7 @@ namespace LevelGeneration.Terrain.Meshing
                 // Check if we are at the maximum edges of a cell. If so, always produce a new vertex.
                 if (cellDir == 8)
                 {
-                    ushort vertexIndex = AddRegularVertex(ref density, index, cornerIdx0, cornerIdx1);
+                    ushort vertexIndex = CreateVertex(ref density, index, cornerIdx0, cornerIdx1);
                     cellIndices[i] = vertexIndex;
 
                     reuseCell[vertexEdgeIndex] = vertexIndex;
@@ -143,17 +126,17 @@ namespace LevelGeneration.Terrain.Meshing
                         (index.y == 0 && reuseCellOffset.y == -1) ||
                         (index.z == 0 && reuseCellOffset.z == -1))
                     {
-                        cellIndices[i] = AddRegularVertex(ref density, index, cornerIdx0, cornerIdx1);
+                        cellIndices[i] = CreateVertex(ref density, index, cornerIdx0, cornerIdx1);
                     }
                     else
                     {
-                        cellIndices[i] = vertexIndices[FlattenIndex(index + reuseCellOffset, chunkSize)][vertexEdgeIndex];
+                        cellIndices[i] = vertexIndices[MeshingHelpers.FlattenIndex(index + reuseCellOffset, chunkSize)][vertexEdgeIndex];
                     }
                 }
             }
 
             // Store the cell for reuse.
-            vertexIndices[FlattenIndex(index, chunkSize)] = reuseCell;
+            vertexIndices[MeshingHelpers.FlattenIndex(index, chunkSize)] = reuseCell;
 
             // Form triangles from the indices above.
             for (int i = 0; i < triangleCount; i++)
@@ -164,7 +147,7 @@ namespace LevelGeneration.Terrain.Meshing
             }
         }
 
-        ushort AddRegularVertex(ref CubeCorners<float> density, int3 index, byte cornerIdx0, byte cornerIdx1)
+        ushort CreateVertex(ref CubeCorners<float> density, int3 index, byte cornerIdx0, byte cornerIdx1)
         {
             // Sample density at cell corners.
             float d0 = density[cornerIdx0];
@@ -178,7 +161,7 @@ namespace LevelGeneration.Terrain.Meshing
             int3 i1 = index + TransvoxelTables.CornerOffsets[cornerIdx1];
 
             // Make edge mask.
-            int edgeMask = GetEdgeMask(i0, i1);
+            int edgeMask = math.select(0, MeshingHelpers.GetEdgeMask(i0, i1, chunkSize), levelScale > 1);
 
             // Compute normal.
             float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
@@ -189,43 +172,83 @@ namespace LevelGeneration.Terrain.Meshing
             // Compute secondary position.
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
-                secondaryPos = ReprojectPointWithNormal(primaryPos, GetTransitionDelta(edgeMask, primaryPos) * padding, normal);
+                secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize) * padding, normal);
 
             // Add vertex and return its index.
-            vertices.Add(new Vertex(TransformPosition(primaryPos), TransformPosition(secondaryPos), normal, edgeMask));
+            vertices.Add(new Vertex(MeshingHelpers.TransformPosition(primaryPos, levelScale, worldScale), MeshingHelpers.TransformPosition(secondaryPos, levelScale, worldScale), normal, edgeMask));
 
             return (ushort)(vertices.Length - 1);
         }
 
-        #endregion
-
-        #region Transition Cells
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        readonly float3 ComputeNormal(int3 coord)
+        {
+            float3 normal;
+            normal.x = SampleDensity(coord - Axis.right) - SampleDensity(coord + Axis.right);
+            normal.y = SampleDensity(coord - Axis.up) - SampleDensity(coord + Axis.up);
+            normal.z = SampleDensity(coord - Axis.forward) - SampleDensity(coord + Axis.forward);
+            return normal;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void MarchTransitionCell(int2 transitionCellIndex, int transitionIndex)
+        unsafe readonly float SampleDensity(int3 cellIndex)
         {
+            int index = MeshingHelpers.FlattenIndex(cellIndex + 1, chunkSize + 3);
+            float* ptr = (float*)densityPtr;
+
+            return *(ptr + index);
+        }
+    }
+
+    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
+    public struct TransitionMeshingJob : IJob
+    {
+        // Input terrain data
+        [ReadOnly] public int3 chunkIndex;            // Index into the density brick map at this clipmap level.
+        [ReadOnly] public int chunkSize;              // Number of cells per axis in a density chunk.
+        [ReadOnly] public int levelScale;             // The scale of the underlying density data, based on the brickmap level.
+        [ReadOnly] public float worldScale;           // World scale of a single cell, determines the scale of the entire terrain.
+        [ReadOnly] public float padding;              // Determines the space between edge cells and the edge of the chunk. These spaces are filled by transition meshes to stitch the seams created when lower LODs meet higher LODs.
+        [ReadOnly] public int transitionIndex;        // The index of this transition JOB, 0 -> 5 = x, -x, y, -y, z, -z.
+
+        [ReadOnly, NativeDisableUnsafePtrRestriction]
+        public IntPtr densityPtr;
+
+        // Output mesh data
+        [NativeDisableParallelForRestriction]
+        public NativeList<Vertex> vertices;
+
+        [NativeDisableParallelForRestriction]
+        public NativeList<ushort> indices;
+
+        public void Execute()
+        {
+            for (int x = 0; x < chunkSize; x++)
+                for (int y = 0; y < chunkSize; y++)
+                    MarchCell(new int2(x, y));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void MarchCell(int2 transitionCellIndex)
+        {
+            if (transitionIndex > 2) // TEMP
+                return;
+
             // Meshing order: (x, -x, y, -y, z, -z)
-            int3 coreIndex = transitionIndex switch
+            int3 index = transitionIndex switch
             {
                 0 => new(chunkSize - 1, transitionCellIndex.x, transitionCellIndex.y),
                 1 => new(0, transitionCellIndex.x, transitionCellIndex.y),
-                2 => new(transitionCellIndex.x, chunkSize - 1, transitionCellIndex.y),
-                3 => new(transitionCellIndex.x, 0, transitionCellIndex.y),
-                4 => new(transitionCellIndex.x, transitionCellIndex.y, chunkSize - 1),
-                5 => new(transitionCellIndex.x, transitionCellIndex.y, 0),
-                _ => new(0, 0, 0)
+                2 => new(),
+                3 => new(),
+                4 => new(),
+                5 => new(),
+                _ => new()
             };
-
+            
             TransitionCorners<float> density = new();
             for (int i = 0; i < 9; i++)
-                density[i] = SampleCoreDensity(((coreIndex * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][i]) / 2);
-
-            // Detect cases where we need to look at the transition density data with i % 2 != 0.
-
-            //for (int i = 0; i < 8; i++)
-            //    density[i] = SampleCoreDensity(coreIndex + TransvoxelTables.CornerOffsets[i]);
-
-            //density[8] = SampleTransitionDensity(transitionCellIndex, transitionIndex);
+                density[i] = SampleDensity((index * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][i]);
 
             float3 packedDensity1 = new(density[0], density[1], density[2]);
             float3 packedDensity2 = new(density[5], density[8], density[7]);
@@ -258,18 +281,18 @@ namespace LevelGeneration.Terrain.Meshing
                 byte cornerIdx0 = (byte)((edgeCode >> 4) & 0x0F);
                 byte cornerIdx1 = (byte)(edgeCode & 0x0F);
 
-                cellIndices[i] = AddTransitionVertex(ref density, coreIndex, cornerIdx0, cornerIdx1, transitionIndex);
+                cellIndices[i] = CreateVertex(ref density, index, cornerIdx0, cornerIdx1, transitionIndex);
 
                 // TODO: Reuse vertices in transition cells.
                 /*
                 byte cellDirection = (byte)(edgeCode >> 12);
-                int2 cellOffset = TransitionCellOffsetFromEdgeCode(cellDirection, chunkFaceIndex);
+                int2 cellOffset = TransitionCellOffsetFromEdgeCode(cellDirection, transitionIndex);
 
                 int vertexEdgeIndex = (edgeCode >> 8) & 0x0F;
 
                 if (cellDirection == 8 || cellDirection == 4)
                 {
-                    cellIndices[i] = AddTransitionVertex(index, v0, v1, t, chunkFaceIndex);
+                    cellIndices[i] = AddTransitionVertex(ref density, coreIndex, cornerIdx0, cornerIdx1, transitionIndex);
                 }
                 else
                 {
@@ -287,20 +310,20 @@ namespace LevelGeneration.Terrain.Meshing
             {
                 if (reverseFace)
                 {
-                    indices.Add((ushort)(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 3]] - meshStartIndices[transitionIndex].x));
-                    indices.Add((ushort)(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 2]] - meshStartIndices[transitionIndex].x));
-                    indices.Add((ushort)(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 1]] - meshStartIndices[transitionIndex].x));
+                    indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 3]]);
+                    indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 2]]);
+                    indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 1]]);
                 }
                 else
                 {
-                    indices.Add((ushort)(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 1]] - meshStartIndices[transitionIndex].x));
-                    indices.Add((ushort)(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 2]] - meshStartIndices[transitionIndex].x));
-                    indices.Add((ushort)(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 3]] - meshStartIndices[transitionIndex].x));
+                    indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 1]]);
+                    indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 2]]);
+                    indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 3]]);
                 }
             }
         }
 
-        ushort AddTransitionVertex(ref TransitionCorners<float> density, int3 index, byte cornerIdx0, byte cornerIdx1, int chunkFaceIndex)
+        ushort CreateVertex(ref TransitionCorners<float> density, int3 index, byte cornerIdx0, byte cornerIdx1, int transitionIndex)
         {
             // Sample density at cell corners.
             float d0 = density[cornerIdx0];
@@ -310,11 +333,11 @@ namespace LevelGeneration.Terrain.Meshing
             float t = d0 / (d0 - d1);
 
             // Get edge indices.
-            int3 i0 = ((index * 2) + TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx0]]) / 2;
-            int3 i1 = ((index * 2) + TransvoxelTables.TransitionCellOffsets[chunkFaceIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx1]]) / 2;
+            int3 i0 = (index * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx0]];
+            int3 i1 = (index * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx1]];
 
             // Make edge mask.
-            int edgeMask = GetEdgeMask(i0, i1);
+            int edgeMask = MeshingHelpers.GetEdgeMask(i0, i1, chunkSize);
 
             // Compute normal.
             float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
@@ -325,61 +348,80 @@ namespace LevelGeneration.Terrain.Meshing
             // Compute secondary position.
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
-                secondaryPos = ReprojectPointWithNormal(primaryPos, GetTransitionDelta(edgeMask, primaryPos) * padding, normal);
+                secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize) * padding, normal);
 
             // Add vertex and return its index.
-            vertices.Add(new Vertex(TransformPosition(primaryPos), TransformPosition(secondaryPos), normal, edgeMask));
+            vertices.Add(new Vertex(MeshingHelpers.TransformPosition(primaryPos, levelScale, worldScale), MeshingHelpers.TransformPosition(secondaryPos, levelScale, worldScale), normal, edgeMask));
 
             return (ushort)(vertices.Length - 1);
         }
 
+        /*
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly int2 TransitionCellOffsetFromEdgeCode(byte idx, int transitionIndex)
         {
-            int2 value = 0;
+            int2 cellOffset = 0;
             if (transitionIndex == 2 || transitionIndex == 3)
             {
                 if (idx == 1)
-                    value.x = -1;
+                    cellOffset.x = -1;
                 else if (idx == 2)
-                    value.y = -1;
+                    cellOffset.y = -1;
             }
             else
             {
                 if (idx == 2)
-                    value.x = -1;
+                    cellOffset.x = -1;
                 else if (idx == 1)
-                    value.y = -1;
+                    cellOffset.y = -1;
             }
 
-            return value;
+            return cellOffset;
         }
-
-        #endregion
-
-        #region Utility
+        */
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly int GetEdgeMask(int3 i0, int3 i1)
+        readonly float3 ComputeNormal(int3 coord)
         {
-            if (!makeTransitionCells)
-                return 0;
+            return new float3(0, 1, 0);
 
-            // Order: (x, -x, y, -y, z, -z)
-            return ((i0.x == chunkSize || i1.x == chunkSize) ? 1  : 0)
-                 | ((i0.x == 0         || i1.x == 0        ) ? 2  : 0)
-                 | ((i0.y == chunkSize || i1.y == chunkSize) ? 4  : 0)
-                 | ((i0.y == 0         || i1.y == 0        ) ? 8  : 0)
+            /*
+            float3 normal;
+            normal.x = SampleDensity(coord - Axis.right) - SampleDensity(coord + Axis.right);
+            normal.y = SampleDensity(coord - Axis.up) - SampleDensity(coord + Axis.up);
+            normal.z = SampleDensity(coord - Axis.forward) - SampleDensity(coord + Axis.forward);
+            return normal;
+            */
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        unsafe readonly float SampleDensity(int3 cellIndex)
+        {            
+            int index = MeshingHelpers.FlattenIndex(cellIndex + 1, (chunkSize * 2) + 3);
+            float* ptr = (float*)densityPtr;
+
+            return *(ptr + index);
+        }
+    }
+
+    public static class MeshingHelpers
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int GetEdgeMask(int3 i0, int3 i1, int chunkSize)
+        {
+            return ((i0.x == chunkSize || i1.x == chunkSize) ? 1 : 0)
+                 | ((i0.x == 0 || i1.x == 0) ? 2 : 0)
+                 | ((i0.y == chunkSize || i1.y == chunkSize) ? 4 : 0)
+                 | ((i0.y == 0 || i1.y == 0) ? 8 : 0)
                  | ((i0.z == chunkSize || i1.z == chunkSize) ? 16 : 0)
-                 | ((i0.z == 0         || i1.z == 0        ) ? 32 : 0);
+                 | ((i0.z == 0 || i1.z == 0) ? 32 : 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly float3 GetTransitionDelta(int edgeMask, float3 position)
+        public static float3 GetTransitionDelta(int edgeMask, float3 position, int chunkSize)
         {
-            // Order: (x, -x, y, -y, z, -z)
             float3 delta = 0;
-            
+
             float farDelta = chunkSize - 1.0f;
             float closeDelta = 1.0f;
 
@@ -414,19 +456,9 @@ namespace LevelGeneration.Terrain.Meshing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly float3 ComputeNormal(int3 coord)
+        public static float3 ReprojectPointWithNormal(float3 p, float3 o, float3 n)
         {
-            float3 normal;
-            normal.x = SampleCoreDensity(coord - Axis.right) - SampleCoreDensity(coord + Axis.right);
-            normal.y = SampleCoreDensity(coord - Axis.up) - SampleCoreDensity(coord + Axis.up);
-            normal.z = SampleCoreDensity(coord - Axis.forward) - SampleCoreDensity(coord + Axis.forward);
-            return normal;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly float3 ReprojectPointWithNormal(float3 p, float3 o, float3 n)
-        {
-            // Reproject position with offset along normal (p47, Equation 4.3).
+            // Reproject position with offset along interpolated normal vector (p47, Equation 4.3).
 
             float a = -n.x * n.y;
             float b = -n.z * n.x;
@@ -442,27 +474,20 @@ namespace LevelGeneration.Terrain.Meshing
             return newPoint;
         }
 
-        unsafe readonly float SampleCoreDensity(int3 cellIndex)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float3 TransformPosition(float3 p, int levelScale, float worldScale)
         {
-            int index = FlattenIndex(cellIndex + 1, chunkSize + 3);
-            float* ptr = (float*)densityPtr;
-
-            return *(ptr + index);
+            return levelScale * worldScale * p;
         }
 
-        unsafe readonly float SampleTransitionDensity(int2 cellIndex, int transitionIndex)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int FlattenIndex(int3 index, int size)
         {
-            // TODO
-
-            return 0.0f;
+            return (index.z * size * size) + (index.y * size) + index.x;
         }
-
-        readonly float3 TransformPosition(float3 p) => levelScale * worldScale * p;
-
-        public static int FlattenIndex(int3 index, int size) => (index.z * size * size) + (index.y * size) + index.x;
-
-        #endregion
     }
+
+    #endregion
 
     #region Helper Objects
 

@@ -64,6 +64,7 @@ Shader "Terrain"
                 uint edgeMask      : TEXCOORD2;
             };
 
+            // Surface textures
             TEXTURE2D(_SurfaceMetallicAlbedo);
             SAMPLER(sampler_SurfaceMetallicAlbedo);
             float4 _SurfaceMetallicAlbedo_ST;
@@ -76,8 +77,7 @@ Shader "Terrain"
             SAMPLER(sampler_SurfaceAmbientOcclusion);
             float4 _SurfaceAmbientOcclusion_ST;
 
-            half4 _SurfaceColor;
-
+            // Side textures
             TEXTURE2D(_SideMetallicAlbedo);
             SAMPLER(sampler_SideMetallicAlbedo);
             float4 _SideMetallicAlbedo_ST;
@@ -90,12 +90,15 @@ Shader "Terrain"
             SAMPLER(sampler_SideAmbientOcclusion);
             float4 _SideAmbientOcclusion_ST;
 
+            half4 _SurfaceColor;
             half4 _SideColor;
 
             half _SlopeFactor;
 
             uint _PackedLODData;
+
             half4 _ClipmapDebugColor;
+            half4 _TransitionDebugColor;
 
             Varyings vert(Attributes IN)
             {
@@ -120,8 +123,8 @@ Shader "Terrain"
                     positionOS = IN.sPositionOS;
                 */
 
-                if ((IN.edgeMask & _PackedLODData) != 0)
-                    positionOS = IN.sPositionOS;
+                //if ((IN.edgeMask & _PackedLODData) != 0)
+                //    positionOS = IN.sPositionOS;
 
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(positionOS.xyz);
@@ -203,7 +206,7 @@ Shader "Terrain"
 
                 half4 litColor = UniversalFragmentPBR(inputData, surfaceData);// + unity_AmbientSky;
 
-                return litColor * (_ClipmapDebugColor + 0.5 / 2.0);
+                return litColor * (_ClipmapDebugColor + 0.5 / 2.0) * _TransitionDebugColor;
             }
 
             ENDHLSL

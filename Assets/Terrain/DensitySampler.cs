@@ -11,12 +11,12 @@ namespace LevelGeneration.Terrain
         readonly struct DistanceFunctionData
         {
             public readonly AffineTransform inverseMatrix;
-            public readonly uint functionID;
+            public readonly byte functionID;
             public readonly bool isSubtractive;
             public readonly float smoothness;
             public readonly float3 dimentions;
 
-            public DistanceFunctionData(AffineTransform inverseMatrix, uint functionID, bool isSubtractive, float smoothness, float3 dimentions)
+            public DistanceFunctionData(AffineTransform inverseMatrix, byte functionID, bool isSubtractive, float smoothness, float3 dimentions)
             {
                 this.inverseMatrix = inverseMatrix;
                 this.functionID = functionID;
@@ -37,7 +37,7 @@ namespace LevelGeneration.Terrain
             {
                 m_DistanceFunctions[i] = new DistanceFunctionData(
                     shapes[i].inverseMatrix,
-                    (uint)shapes[i].distanceFunction,
+                    (byte)shapes[i].distanceFunction,
                     shapes[i].blendMode == BlendMode.Subtractive,
                     shapes[i].smoothness * 6.0f, // Multiply smoothness by 6 as the first step to the cubic polynomial smooth min / max functions.
                     new float3(shapes[i].dimention1, shapes[i].dimention2, shapes[i].dimention3)
@@ -58,8 +58,10 @@ namespace LevelGeneration.Terrain
             float3 translatedPosition;
             float distance;
 
-            foreach (DistanceFunctionData sdf in m_DistanceFunctions)
+            for (int i = 0; i < m_DistanceFunctions.Length; i++)
             {
+                DistanceFunctionData sdf = m_DistanceFunctions[i];
+
                 // Get a translated position using the shape's inverse matrix (worldToLocal).
                 translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
 
@@ -83,23 +85,21 @@ namespace LevelGeneration.Terrain
                 };
 
                 // Mix the old and new distance values using a smoothing function.
-                // Optional optimization here; only use expensive smooth min/max functions for the highest LOD. TODO: Convert into separate kernals to avoid branch.
-                if (fast)
-                {
-                    result = math.select(
-                        math.min(result, distance),
-                        -math.min(-result, distance),
-                        sdf.isSubtractive
-                        );
-                }
-                else
-                {
-                    result = math.select(
+                // Optional optimization here; only use expensive smooth min/max functions for the highest LOD.
+                
+                // TODO: Convert into separate kernals to avoid branch!!
+                
+                result = math.select(
+                    math.select(
                         SmoothMin(result, distance, sdf.smoothness),
                         SmoothMax(result, distance, sdf.smoothness),
-                        sdf.isSubtractive
-                        );
-                }
+                        sdf.isSubtractive),
+                    math.select(
+                        math.min(result, distance),
+                        -math.min(-result, distance),
+                        sdf.isSubtractive),
+                    fast
+                );
             }
 
             return result;
