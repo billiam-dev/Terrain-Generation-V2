@@ -175,7 +175,7 @@ namespace LevelGeneration.Terrain.Meshing
                 secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize) * padding, normal);
 
             // Add vertex and return its index.
-            vertices.Add(new Vertex(MeshingHelpers.TransformPosition(primaryPos, levelScale, worldScale), MeshingHelpers.TransformPosition(secondaryPos, levelScale, worldScale), normal, edgeMask));
+            vertices.Add(new Vertex(MeshingHelpers.TransformPosition(primaryPos, chunkSize, levelScale, worldScale), MeshingHelpers.TransformPosition(secondaryPos, chunkSize, levelScale, worldScale), normal, edgeMask));
 
             return (ushort)(vertices.Length - 1);
         }
@@ -351,7 +351,7 @@ namespace LevelGeneration.Terrain.Meshing
                 secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize) * padding, normal);
 
             // Add vertex and return its index.
-            vertices.Add(new Vertex(MeshingHelpers.TransformPosition(primaryPos, levelScale, worldScale), MeshingHelpers.TransformPosition(secondaryPos, levelScale, worldScale), normal, edgeMask));
+            vertices.Add(new Vertex(MeshingHelpers.TransformPosition(primaryPos, chunkSize, levelScale, worldScale), MeshingHelpers.TransformPosition(secondaryPos, chunkSize, levelScale, worldScale), normal, edgeMask));
 
             return (ushort)(vertices.Length - 1);
         }
@@ -475,9 +475,9 @@ namespace LevelGeneration.Terrain.Meshing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float3 TransformPosition(float3 p, int levelScale, float worldScale)
+        public static float3 TransformPosition(float3 p, int chunkSize, int levelScale, float worldScale)
         {
-            return levelScale * worldScale * p;
+            return levelScale * worldScale * (p - (chunkSize / 2));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

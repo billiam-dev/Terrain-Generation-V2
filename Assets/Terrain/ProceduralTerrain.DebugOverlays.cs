@@ -1,7 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
 using Unity.Mathematics;
-using UnityEditor;
 using UnityEngine;
 
 namespace LevelGeneration.Terrain
@@ -76,11 +75,8 @@ namespace LevelGeneration.Terrain
                     color += densityModified ? Color.red : RandomPastelColor(index);
                     color.a = isUniformState ? 0.005f : 0.2f;
 
-                    float3 corner = worldPosition;
-                    float3 centre = corner + (worldSize / 2.0f);
-
                     Gizmos.color = color;
-                    Gizmos.DrawWireCube(centre, worldSize);
+                    Gizmos.DrawWireCube(worldPosition, Vector3.one * worldSize);
                 }
             }
 

@@ -56,7 +56,7 @@ namespace LevelGeneration.Terrain.Tests
                                 pos -= gridSize / 2.0f - 0.5f;
                                 pos *= separation;
 
-                                m_Terrain.AddShape(new Shape(pos, quaternion.identity, 1.0f, DistanceFunction.Sphere, BlendMode.Additive, 1.0f, sphereSize, 0.0f, 0.0f));
+                                m_Terrain.AddShape(new Shape(pos, quaternion.identity, 1.0f, DistanceFunction.Sphere, BlendMode.Additive, 1.0f, sphereSize));
                             }
                         }
                     }

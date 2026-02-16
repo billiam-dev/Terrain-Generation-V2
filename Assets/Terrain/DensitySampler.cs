@@ -10,37 +10,40 @@ namespace LevelGeneration.Terrain
     {
         readonly struct DistanceFunctionData
         {
-            public readonly AffineTransform inverseMatrix;
-            public readonly byte functionID;
-            public readonly bool isSubtractive;
-            public readonly float smoothness;
-            public readonly float3 dimentions;
+            // Ordered in decending order for cache efficiency.
 
-            public DistanceFunctionData(AffineTransform inverseMatrix, byte functionID, bool isSubtractive, float smoothness, float3 dimentions)
+            public readonly AffineTransform inverseMatrix; // 64 bytes
+            public readonly float3 dimentions;             // 12 bytes
+            public readonly uint functionID;               // 4 bytes
+            public readonly float smoothness;              // 4 bytes
+            public readonly float minSign;                 // 4 bytes
+
+            public DistanceFunctionData(AffineTransform inverseMatrix, float3 dimentions, uint functionID, float smoothness, bool isSubtractive)
             {
                 this.inverseMatrix = inverseMatrix;
-                this.functionID = functionID;
-                this.isSubtractive = isSubtractive;
-                this.smoothness = smoothness;
                 this.dimentions = dimentions;
+                this.functionID = functionID;
+                this.smoothness = smoothness;
+                minSign = isSubtractive ? -1 : 1;
             }
         }
 
         NativeArray<DistanceFunctionData> m_DistanceFunctions;
+        int m_NumShapesAllocated;
 
         public void Allocate(List<Shape> shapes, Allocator allocator)
         {
-            int numShapes = shapes.Count;
-            m_DistanceFunctions = new(numShapes, allocator);
+            m_NumShapesAllocated = shapes.Count;
+            m_DistanceFunctions = new(m_NumShapesAllocated, allocator);
 
-            for (int i = 0; i < numShapes; i++)
+            for (int i = 0; i < m_NumShapesAllocated; i++)
             {
                 m_DistanceFunctions[i] = new DistanceFunctionData(
                     shapes[i].inverseMatrix,
-                    (byte)shapes[i].distanceFunction,
-                    shapes[i].blendMode == BlendMode.Subtractive,
+                    shapes[i].dimentions,
+                    (uint)shapes[i].distanceFunction,
                     shapes[i].smoothness * 6.0f, // Multiply smoothness by 6 as the first step to the cubic polynomial smooth min / max functions.
-                    new float3(shapes[i].dimention1, shapes[i].dimention2, shapes[i].dimention3)
+                    shapes[i].blendMode == BlendMode.Subtractive
                 );
             }
         }
@@ -50,25 +53,26 @@ namespace LevelGeneration.Terrain
             m_DistanceFunctions.Dispose();
         }
 
-        public readonly float Sample(float3 worldPosition, float initialDensity, bool fast)
+        public readonly float Sample(float3 worldPosition, float initialDensity)
         {
             float result = initialDensity;
 
             // Apply distance functions.
+            DistanceFunctionData sdf;
             float3 translatedPosition;
             float distance;
 
-            for (int i = 0; i < m_DistanceFunctions.Length; i++)
+            for (int i = 0; i < m_NumShapesAllocated; i++)
             {
-                DistanceFunctionData sdf = m_DistanceFunctions[i];
+                sdf = m_DistanceFunctions[i];
 
                 // Get a translated position using the shape's inverse matrix (worldToLocal).
                 translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
 
                 // Special case for noise to avoid min/max functions.
-                if (sdf.functionID == 6)
+                if (sdf.functionID == 6) // TODO: remove noise as shape (as well as surface). Pass noise index, itterate through pre-noise shapes, then post-noise shapes to cut out this if statement.
                 {
-                    result += Noise(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, 3);
+                    result += Noise(translatedPosition, sdf.dimentions.x, sdf.dimentions.y);
                     continue;
                 }
 
@@ -80,26 +84,14 @@ namespace LevelGeneration.Terrain
                     2 => Capsule(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
                     3 => Torus(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
                     4 => Cube(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, sdf.dimentions.z),
-                    5 => Surface(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, 5), // TODO: integrate with terrain component, there can only be one surface. Replace initial density w/ this.
+                    5 => Surface(translatedPosition, sdf.dimentions.x, sdf.dimentions.y), // TODO: integrate with terrain component, there can only be one surface. Replace initial density w/ this.
                     _ => 0
                 };
 
-                // Mix the old and new distance values using a smoothing function.
-                // Optional optimization here; only use expensive smooth min/max functions for the highest LOD.
-                
-                // TODO: Convert into separate kernals to avoid branch!!
-                
-                result = math.select(
-                    math.select(
-                        SmoothMin(result, distance, sdf.smoothness),
-                        SmoothMax(result, distance, sdf.smoothness),
-                        sdf.isSubtractive),
-                    math.select(
-                        math.min(result, distance),
-                        -math.min(-result, distance),
-                        sdf.isSubtractive),
-                    fast
-                );
+                // Mix the old and new distance values using smooth min.
+                result = SmoothMin(result * sdf.minSign, distance, sdf.smoothness) * sdf.minSign;
+
+                // Note: this can have separate Kernal which avoids the expensive SmoothMin call SampleFast, far off terrain would benefit from this if the visual impact is acceptable.
             }
 
             return result;
@@ -156,23 +148,24 @@ namespace LevelGeneration.Terrain
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float Surface(float3 pos, float frequency, float amplitude, int octaves)
+        static float Surface(float3 pos, float frequency, float amplitude)
         {
-            return pos.y + Noise(new float3(pos.x, 0, pos.z), frequency, amplitude, octaves);
+            float4 noise;
+            noise.x = SimplexNoise.Sample3D(frequency * pos) * amplitude;
+            noise.y = SimplexNoise.Sample3D(2.0f * frequency * pos) * amplitude * 0.5f;
+            noise.z = SimplexNoise.Sample3D(4.0f * frequency * pos) * amplitude * 0.25f;
+            noise.w = SimplexNoise.Sample3D(8.0f * frequency * pos) * amplitude * 0.125f;
+            return pos.y + math.csum(noise);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float Noise(float3 pos, float frequency, float amplitude, int octaves)
+        static float Noise(float3 pos, float frequency, float amplitude)
         {
-            float value = 0.0f;
-            for (int i = 0; i < octaves; i++)
-            {
-                value += SimplexNoise.Sample(pos * frequency) * amplitude;
-                frequency *= 2.0f;
-                amplitude *= 0.5f;
-            }
-
-            return value;
+            float3 noise;
+            noise.x = SimplexNoise.Sample3D(frequency * pos) * amplitude;
+            noise.y = SimplexNoise.Sample3D(2.0f * frequency * pos) * amplitude * 0.5f;
+            noise.z = SimplexNoise.Sample3D(4.0f * frequency * pos) * amplitude * 0.25f;
+            return math.csum(noise);
         }
 
         /*
@@ -182,14 +175,7 @@ namespace LevelGeneration.Terrain
          * Note: This is the best method I have found on Inigo Quilez's website for both speed and accuracy.
         */
 
-        const float OneOverSix = 0.16666666666666666666666666666667f; // Cache the (1 / 6) calculation performed in SmoothMin & SmoothMax; division is slow.
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float SmoothMax(float a, float b, float k)
-        {
-            float h = math.max(k - math.abs(-a + b), 0.0f) / k;
-            return -(math.min(-a, b) - h * h * h * k * OneOverSix);
-        }
+        const float OneOverSix = 0.16666667f; // Cache the (1 / 6) calculation performed in SmoothMin & SmoothMax; division is slow.
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float SmoothMin(float a, float b, float k)

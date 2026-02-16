@@ -14,9 +14,7 @@ namespace LevelGeneration.Terrain
         public readonly BlendMode blendMode;
         public readonly float smoothness;
 
-        public readonly float dimention1;
-        public readonly float dimention2;
-        public readonly float dimention3;
+        public readonly float3 dimentions;
 
         public bool IsGlobal => (uint)distanceFunction >= 5;
 
@@ -24,7 +22,8 @@ namespace LevelGeneration.Terrain
         // Larger values result in a larger volume allowing for smoothing over larger distances at the expense of speed.
         const float k_SmoothnessVolumeExtentConstant = 4.0f;
 
-        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1, float dimention2, float dimention3)
+        // Constructors
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float3 dimentions)
         {
             matrix = new(translation, rotation, scale);
             inverseMatrix = math.inverse(matrix);
@@ -32,10 +31,25 @@ namespace LevelGeneration.Terrain
             this.distanceFunction = distanceFunction;
             this.blendMode = blendMode;
             this.smoothness = smoothness;
+            this.dimentions = dimentions;
+        }
 
-            this.dimention1 = dimention1;
-            this.dimention2 = dimention2;
-            this.dimention3 = dimention3;
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1, float dimention2, float dimention3)
+            : this(translation, rotation, scale, distanceFunction, blendMode, smoothness, new float3(dimention1, dimention2, dimention3))
+        {
+
+        }
+
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1, float dimention2)
+            : this(translation, rotation, scale, distanceFunction, blendMode, smoothness, new float3(dimention1, dimention2, 0))
+        {
+
+        }
+
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1)
+            : this(translation, rotation, scale, distanceFunction, blendMode, smoothness, new float3(dimention1, 0, 0))
+        {
+
         }
 
         /// <summary>
@@ -49,18 +63,16 @@ namespace LevelGeneration.Terrain
             {
                 case DistanceFunction.Sphere:
                 case DistanceFunction.SemiSphere:
-                    boundsVolume = dimention1 * 2.0f; // diameter = radius * 2
+                    boundsVolume = dimentions.x * 2.0f; // diameter = radius * 2
                     break;
 
                 case DistanceFunction.Capsule:
-                    boundsVolume.y = (dimention1 + dimention2) * 2.0f;
-                    boundsVolume.xz = dimention2 * 2.0f;
+                    boundsVolume.y = (dimentions.x + dimentions.y) * 2.0f;
+                    boundsVolume.xz = dimentions.y * 2.0f;
                     break;
 
                 case DistanceFunction.Cube:
-                    boundsVolume.x = dimention1 * 2.0f;
-                    boundsVolume.y = dimention2 * 2.0f;
-                    boundsVolume.z = dimention3 * 2.0f;
+                    boundsVolume = dimentions * 2.0f;
                     break;
 
                 case DistanceFunction.Surface:

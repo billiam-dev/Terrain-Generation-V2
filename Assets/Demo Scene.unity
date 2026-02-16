@@ -352,7 +352,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0.17364816, y: 0, z: 0, w: 0.9848078}
-  m_LocalPosition: {x: 0, y: 20, z: -45}
+  m_LocalPosition: {x: 0, y: 20, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -461,7 +461,6 @@ Transform:
   - {fileID: 2095939794}
   - {fileID: 127140123}
   - {fileID: 1917078722}
-  - {fileID: 2109246896}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &337805763
@@ -484,7 +483,7 @@ MonoBehaviour:
   m_DrawBricks: 0
   m_DrawShapeVolumes: 0
   m_EnableDensityTester: 0
-  m_DensityTesterPosition: {x: 13.968396, y: 27.452362, z: 6.4280353}
+  m_DensityTesterPosition: {x: 0, y: 10, z: 0}
 --- !u!114 &337805764
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -999,7 +998,7 @@ MonoBehaviour:
   m_BlendMode: 0
   m_Smoothness: 1
   m_Dimention1: 0.005
-  m_Dimention2: 20
+  m_Dimention2: 30
   m_Dimention3: 512
 --- !u!1001 &1103205056
 PrefabInstance:
@@ -1200,7 +1199,7 @@ MonoBehaviour:
   m_BlendMode: 0
   m_Smoothness: 1
   m_Dimention1: 0.03
-  m_Dimention2: 5
+  m_Dimention2: 4
   m_Dimention3: 512
 --- !u!1 &1692127799
 GameObject:
@@ -1402,56 +1401,6 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2095939793}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 186d5fe9c10811a4cb84fbc097c42a9e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapeBrush
-  m_DistanceFunction: 0
-  m_BlendMode: 1
-  m_Smoothness: 1
-  m_Dimention1: 12
-  m_Dimention2: 0
-  m_Dimention3: 0
---- !u!1 &2109246895
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2109246896}
-  - component: {fileID: 2109246897}
-  m_Layer: 0
-  m_Name: Sphere Cutout (4)
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &2109246896
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2109246895}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -120.3, y: -67, z: 38.4}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 337805762}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &2109246897
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2109246895}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 186d5fe9c10811a4cb84fbc097c42a9e, type: 3}

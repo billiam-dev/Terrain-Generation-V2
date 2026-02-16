@@ -21,7 +21,7 @@ namespace LevelGeneration.Terrain
 
             double t = 0.0;
             Stopwatch.Start(ref t);
-            float density = SampleDensity(position, false);
+            float density = SampleDensity(position);
             Stopwatch.End(ref t);
 
             // Make label string.

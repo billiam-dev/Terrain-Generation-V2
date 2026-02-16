@@ -25,8 +25,8 @@ namespace LevelGeneration.Terrain
 
     public static class SimplexNoise
     {
-        const float OneOverSix = 0.16666666666666666666666666666667f;
-        const float OneOverThree = 0.33333333333333333333333333333333f;
+        const float OneOverSix = 0.16666667f;
+        const float OneOverThree = 0.33333333f;
 
         static float3 Mod289(float3 x)
         {
@@ -48,7 +48,9 @@ namespace LevelGeneration.Terrain
             return 1.79284291400159f - r * 0.85373472095314f;
         }
 
-        public static float Sample(float3 v)
+        // TODO: Sample2D for surface SDF.
+
+        public static float Sample3D(float3 v)
         {
             float2 C = new(OneOverSix, OneOverThree);
 

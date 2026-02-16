@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
+using Unity.VisualScripting;
 using UnityEditor;
 using UnityEditor.PackageManager.UI;
 using UnityEngine;
@@ -296,7 +297,7 @@ namespace LevelGeneration.Terrain
         /// <summary>
         /// Sample the density cache at the given indices.
         /// </summary>
-        public float SampleDensity(float3 positionWS, bool fast)
+        public float SampleDensity(float3 positionWS)
         {
             // Scale position by world scale.
             positionWS *= 1.0f / k_WorldScale;
@@ -306,7 +307,7 @@ namespace LevelGeneration.Terrain
             sampler.Allocate(m_Scene.Shapes, Allocator.Temp);
 
             // Sample the SDF at the given position.
-            float value = sampler.Sample(positionWS, EmptyDensityValue, fast);
+            float value = sampler.Sample(positionWS, EmptyDensityValue);
 
             // Dispose the sampler and return the result.
             sampler.Dispose();
@@ -575,14 +576,14 @@ namespace LevelGeneration.Terrain
                     }
                 }
 
-                readonly int3 index;
-                readonly int size;
-                readonly int levelScale;
-                readonly float worldScale;
+                readonly int3 index;           // Brick index within its brickmap level.
+                readonly int size;             // The base points per axis of this density brick.
+                readonly int levelScale;       // The scale of this brick based on the brickmap level index.
+                readonly float worldScale;     // The in-world scale of a single cell, constant.
 
-                readonly float3 worldPosition;
-                readonly float3 worldSize;
-                readonly Bounds bounds;
+                readonly float3 worldPosition; // In-world centre.
+                readonly float worldSize;      // In-world size.
+                readonly Bounds bounds;        // Local space bounds (for meshes).
 
                 readonly DensityCache densityCache;
                 readonly BrickRenderer renderer;
@@ -601,8 +602,8 @@ namespace LevelGeneration.Terrain
                     this.worldScale = worldScale;
 
                     worldSize = worldScale * levelScale * size;
-                    worldPosition = worldSize * index;
-                    bounds = new(worldSize * 0.5f, worldSize);
+                    worldPosition = worldSize * (float3)index + (worldSize * 0.5f);
+                    bounds = new(Vector3.zero, Vector3.one * worldSize);
 
                     densityCache = new();
                     renderer = new();
@@ -636,7 +637,13 @@ namespace LevelGeneration.Terrain
 
                     if (densityModified)
                     {
-                        // Validate that there are shapes intersecting this brick.
+                        /*
+                         * Special case for bricks with no shape intersections:
+                         * 
+                         * This is not likely to arise in a gameplay scene where there are
+                         * global surface and noise shapes, but the next special case can help with that.
+                        */
+
                         if (shapes.Count == 0)
                         {
                             // If we are not already uniform, dispose this object.
@@ -648,40 +655,64 @@ namespace LevelGeneration.Terrain
                         else
                         {
                             // Allocate a density sampler.
+                            // TODO: possibly run FindIntersectingShapes(shapes) as JOBs in parallel, this is quite slow.
+
                             densitySampler.Allocate(FindIntersectingShapes(shapes), Allocator.TempJob);
                             samplerIsAllocated = true;
 
-                            // Evaluate the core density function.
-                            double t = 0.0;
-                            Stopwatch.Start(ref t);
-                            DensityEvaluationResult result = s_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
-                            Stopwatch.End(ref t);
-                            s_AvgDensityEvalTime.AddTime(t);
+                            /* 
+                             * Special case for bricks with large distances:
+                             * 
+                             * Take a distance sample at the brick's centre.
+                             * If the distance to the nearest surface is greater than twice the brick size,
+                             * skip evaluating the full density function for this brick.
+                            */
 
-                            // If the result is not uniform, continue to recompute the mesh.
-                            // Else, if this brick is not already uniform, ensure it is disposed.
+                            float centreSample = densitySampler.Sample(worldPosition, EmptyDensityValue);
+                            float densityFence = (worldSize * 2.0f) + 1.0f; // Add 1 to catch literal edge cases.
 
-                            if (!result.isUniformState)
+                            if (centreSample > densityFence || centreSample < -densityFence)
                             {
-                                // Ensure core density is allocated and copy density result.
-                                if (!densityCache.IsAllocated)
-                                    densityCache.Allocate(size, levelScale > 1);
+                                // If we are not already uniform, dispose this object.
+                                if (!isUniformState)
+                                    Dispose();
 
-                                densityCache.CopyCoreDensity(result.density);
-
-                                // Ensure renderer is allocated and schedule core remeshing task.
-                                if (!renderer.IsAllocated)
-                                    renderer.Allocate(bounds, levelScale > 1);
-
-                                renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.GetCoreDensityPointer());
+                                isUniformState = true;
                             }
-                            else if (!isUniformState)
+                            else
                             {
-                                Dispose();
-                            }
+                                // Evaluate the core density function.
+                                double t = 0.0;
+                                Stopwatch.Start(ref t);
+                                DensityEvaluationResult result = s_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
+                                Stopwatch.End(ref t);
+                                s_AvgDensityEvalTime.AddTime(t);
 
-                            // Set new uniformity status.
-                            isUniformState = result.isUniformState;
+                                // If the result is not uniform, continue to recompute the mesh.
+                                // Else, if this brick is not already uniform, ensure it is disposed.
+
+                                if (!result.isUniformState)
+                                {
+                                    // Ensure core density is allocated and copy density result.
+                                    if (!densityCache.IsAllocated)
+                                        densityCache.Allocate(size, levelScale > 1);
+
+                                    densityCache.CopyCoreDensity(result.density);
+
+                                    // Ensure renderer is allocated and schedule core remeshing task.
+                                    if (!renderer.IsAllocated)
+                                        renderer.Allocate(bounds, levelScale > 1);
+
+                                    renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.GetCoreDensityPointer());
+                                }
+                                else if (!isUniformState)
+                                {
+                                    Dispose();
+                                }
+
+                                // Set new uniformity status.
+                                isUniformState = result.isUniformState;
+                            }
                         }
 
                         // Evaluate transitions.
@@ -773,7 +804,7 @@ namespace LevelGeneration.Terrain
                 bool InViewFrustum(Camera camera)
                 {
                     Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(camera);
-                    Bounds bounds = new(worldPosition + (worldSize / 2.0f), worldSize);
+                    Bounds bounds = new(worldPosition, Vector3.one * worldSize);
                     return GeometryUtility.TestPlanesAABB(frustumPlanes, bounds);
                 }
 
