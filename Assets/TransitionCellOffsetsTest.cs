@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
@@ -42,3 +43,4 @@ public class TransitionCellOffsetsTest : MonoBehaviour
         }
     }
 }
+#endif

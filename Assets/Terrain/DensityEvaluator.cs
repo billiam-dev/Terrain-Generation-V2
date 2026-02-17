@@ -53,7 +53,6 @@ namespace LevelGeneration.Terrain
             DensityJob job = new()
             {
                 densitySampler = sampler,
-                initialDensity = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 pointsPerAxis = brickSize + 3,
@@ -79,7 +78,6 @@ namespace LevelGeneration.Terrain
             TransitionDensityJob job = new()
             {
                 densitySampler = sampler,
-                initialDensity = ProceduralTerrain.EmptyDensityValue,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
                 pointsPerAxis = (brickSize * 2) + 3,
@@ -99,13 +97,16 @@ namespace LevelGeneration.Terrain
         /*
          * Note: cannot use [FloatMode = FloatMode.Fast] for these Jobs.
          * Doing so quickly introduces large errors when moving away from the world origin.
+         * 
+         * Note: I could possibly re-introduce this setting by localising the shapes around the brickIndex.
+         * So, brickIndex is always treated as the world centre. However, this may still introduce small gaps in the terrain.
+         * TODO: test this!
         */
 
-        [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
+        [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct DensityJob : IJobFor
         {
             [ReadOnly] public DensitySampler densitySampler;
-            [ReadOnly] public float initialDensity;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
             [ReadOnly] public int pointsPerAxis;
@@ -127,20 +128,19 @@ namespace LevelGeneration.Terrain
                 int z = index / (pointsPerAxis * pointsPerAxis);
                 int y = (index / pointsPerAxis) % pointsPerAxis;
                 int x = index % pointsPerAxis;
-
-                int3 coord = new(x, y, z);
+                int3 cellIndex = new(x, y, z);
 
                 // Derrive world position from iteration index.
-                float3 worldPosition = levelScale * worldScale * (float3)(brickIndex * brickSize + coord - 1);
+                float3 worldPosition = levelScale * worldScale * (float3)(brickIndex * brickSize + cellIndex - 1);
 
                 // Sample the SDF.
-                float newDensity = densitySampler.Sample(worldPosition, initialDensity);
+                float newDensity = densitySampler.Sample(worldPosition);
 
                 // Store the new density.
                 density[index] = newDensity;
 
                 // Update positive / negative value flags.
-                if (math.all(coord > 0) && math.all(coord <= brickSize + 2))
+                if (math.all(cellIndex > 0) && math.all(cellIndex <= brickSize + 2))
                 {
                     if (newDensity > 0.0f)
                         positiveValueFound.Value = true;
@@ -154,7 +154,6 @@ namespace LevelGeneration.Terrain
         struct TransitionDensityJob : IJobFor
         {
             [ReadOnly] public DensitySampler densitySampler;
-            [ReadOnly] public float initialDensity;
             [ReadOnly] public int3 brickIndex;
             [ReadOnly] public int brickSize;
             [ReadOnly] public int pointsPerAxis;
@@ -167,21 +166,21 @@ namespace LevelGeneration.Terrain
 
             public void Execute(int index)
             {
+                // Unwrap the iteration index into a 3D index using the extended brick size.
                 int z = index / (pointsPerAxis * pointsPerAxis);
                 int y = (index / pointsPerAxis) % pointsPerAxis;
                 int x = index % pointsPerAxis;
-
-                int3 coord = new(x, y, z);
+                int3 cellIndex = new(x, y, z);
 
                 // x = 0 -> pointsPerAxis (-1)
                 // y = 0 -> pointsPerAxis (-1)
                 // z = 0 -> 3 (-1)
 
                 // Order: (x, -x, y, -y, z, -z)
-                coord = transitionIndex switch
+                cellIndex = transitionIndex switch
                 {
-                    0 => new(brickSize - 1 + coord.z, coord.y, coord.x),
-                    1 => new(0 + coord.z, coord.y, coord.x),
+                    0 => new(brickSize - 1 + cellIndex.z, cellIndex.y, cellIndex.x),
+                    1 => new(0 + cellIndex.z, cellIndex.y, cellIndex.x),
                     2 => new(),
                     3 => new(),
                     4 => new(),
@@ -194,10 +193,10 @@ namespace LevelGeneration.Terrain
                 // Coord range is double-precision compared to core evaluation jobs for this level.
                 // Therefore we multiply the rest of the calculation by 2 to match.
 
-                float3 worldPosition = (levelScale * worldScale * (float3)(brickIndex * brickSize)) + (coord - 1);
+                float3 worldPosition = (levelScale * worldScale * (float3)(brickIndex * brickSize)) + (cellIndex - 1);
 
                 // Store the new density.
-                density[index] = densitySampler.Sample(worldPosition, initialDensity);
+                density[index] = densitySampler.Sample(worldPosition);
             }
         }
     }

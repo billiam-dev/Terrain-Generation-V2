@@ -4,23 +4,42 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using Unity.VisualScripting;
-using UnityEditor;
-using UnityEditor.PackageManager.UI;
 using UnityEngine;
-using UnityEngine.Profiling;
 using UnityEngine.Rendering;
-using UnityEngine.UIElements;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace LevelGeneration.Terrain
 {
     [ExecuteInEditMode]
     [DisallowMultipleComponent]
-    public partial class ProceduralTerrain : MonoBehaviour
+    public partial class ProceduralTerrain : MonoBehaviour // TODO: static singleton
     {
-        // TODO: There is an undetected memory leak somewhere in here, look at task manager when enabling/disabling the terrain.
+        /// <summary>
+        /// Initialize the density field with a noise-based surface.
+        /// </summary>
+        [Tooltip("Initialize the density field with a noise-based surface.")]
+        public bool EnableSurface = false;
+
+        public float SurfaceNoiseAmplitude = 50.0f;
+        public float SurfaceNoiseFrequency = 0.001f;
+        public float SurfaceYPosition = 0.0f;
+        public uint SurfaceSeed = 0;
+
+        /// <summary>
+        /// Apply a 3D Simplex Noise layer to the entire terrain.
+        /// </summary>
+        [Tooltip("Apply a 3D Simplex Noise layer to the entire terrain.")]
+        public bool EnableGlobalNoise = false;
+
+        public float GlobalNoiseAmplitude = 4.0f;
+        public float GlobalNoiseFrequency = 0.02f;
+        public uint GlobalNoiseSeed = 0;
 
         public Material Material;
+
         public bool ForceMainCamera;
         public bool UseStaticOrigin;
         public bool ColorBrickmapLevels;
@@ -48,8 +67,15 @@ namespace LevelGeneration.Terrain
         const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
         const int k_NumBrickmapLevels = 3;    // The number of brickmap levels, each doubling the grid size of the previous level.
 
-        public static readonly float EmptyDensityValue = 32.0f;
-        public static readonly float FullDensityValue = -32.0f;
+        readonly Color[] k_BrickmapLevelDebugColors = new Color[]
+        {
+            new(1.0f, 0.2f, 0.0f, 1.0f),
+            new(0.0f, 1.0f, 0.2f, 0.8f),
+            new(0.2f, 0.0f, 1.0f, 0.6f),
+            new(0.8f, 0.8f, 0.8f, 0.4f),
+            new(0.4f, 0.4f, 0.4f, 0.2f),
+            new(0.1f, 0.1f, 0.1f, 0.1f)
+        };
 
         void OnEnable()
         {
@@ -112,6 +138,16 @@ namespace LevelGeneration.Terrain
 
             s_DensityEvaluator.Allocate(k_BrickSize);
             s_Mesher.Allocate();
+
+            if (EnableSurface)
+                m_Scene.SetSurfaceSettings(new NoiseSettings(new float3(0, SurfaceYPosition, 0), SurfaceNoiseAmplitude, SurfaceNoiseFrequency, GlobalNoiseSeed));
+            else
+                m_Scene.SetSurfaceSettings(new NoiseSettings(0.0f, 0.0f));
+
+            if (EnableGlobalNoise)
+                m_Scene.SetGlobalNoiseSettings(new NoiseSettings(0, GlobalNoiseAmplitude, GlobalNoiseFrequency, GlobalNoiseSeed));
+            else
+                m_Scene.SetGlobalNoiseSettings(new NoiseSettings(0.0f, 0.0f));
 
             for (int i = 0; i < k_NumBrickmapLevels; i++)
                 m_BrickmapLevels[i] = new(k_BrickmapLevelSize, k_BrickSize, i, k_WorldScale);
@@ -304,10 +340,10 @@ namespace LevelGeneration.Terrain
 
             // Allocate a temporary density sampler.
             DensitySampler sampler = new();
-            sampler.Allocate(m_Scene.Shapes, Allocator.Temp);
+            sampler.Allocate(m_Scene.Shapes, m_Scene.Surface, m_Scene.GlobalNoise, Allocator.Temp);
 
             // Sample the SDF at the given position.
-            float value = sampler.Sample(positionWS, EmptyDensityValue);
+            float value = sampler.Sample(positionWS);
 
             // Dispose the sampler and return the result.
             sampler.Dispose();
@@ -624,7 +660,7 @@ namespace LevelGeneration.Terrain
                         renderer.Dispose();
                 }
 
-                public void Update(Camera observerCamera, List<Shape> shapes, byte neighborLOD)
+                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene, byte neighborLOD)
                 {
                     // Update neighbour LOD data.
                     this.neighborLOD = neighborLOD;
@@ -637,14 +673,24 @@ namespace LevelGeneration.Terrain
 
                     if (densityModified)
                     {
-                        /*
-                         * Special case for bricks with no shape intersections:
+                        // Allocate a density sampler.
+                        // TODO: possibly run FindIntersectingShapes(shapes) as JOBs in parallel, this is quite slow.
+
+                        densitySampler.Allocate(FindIntersectingShapes(shapes), scene.Surface, scene.GlobalNoise, Allocator.TempJob);
+                        samplerIsAllocated = true;
+
+                        /* 
+                         * Special case for bricks with large distances:
                          * 
-                         * This is not likely to arise in a gameplay scene where there are
-                         * global surface and noise shapes, but the next special case can help with that.
+                         * Take a distance sample at the brick's centre.
+                         * If the distance to the nearest surface is greater than twice the brick size,
+                         * skip evaluating the full density function for this brick.
                         */
 
-                        if (shapes.Count == 0)
+                        float centreSample = densitySampler.Sample(worldPosition);
+                        float densityFence = (worldSize * 2.0f) + 1.0f; // Add 1 to catch literal edge cases.
+
+                        if (centreSample > densityFence || centreSample < -densityFence)
                         {
                             // If we are not already uniform, dispose this object.
                             if (!isUniformState)
@@ -654,65 +700,37 @@ namespace LevelGeneration.Terrain
                         }
                         else
                         {
-                            // Allocate a density sampler.
-                            // TODO: possibly run FindIntersectingShapes(shapes) as JOBs in parallel, this is quite slow.
+                            // Evaluate the core density function.
+                            double t = 0.0;
+                            Stopwatch.Start(ref t);
+                            DensityEvaluationResult result = s_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
+                            Stopwatch.End(ref t);
+                            s_AvgDensityEvalTime.AddTime(t);
 
-                            densitySampler.Allocate(FindIntersectingShapes(shapes), Allocator.TempJob);
-                            samplerIsAllocated = true;
+                            // If the result is not uniform, continue to recompute the mesh.
+                            // Else, if this brick is not already uniform, ensure it is disposed.
 
-                            /* 
-                             * Special case for bricks with large distances:
-                             * 
-                             * Take a distance sample at the brick's centre.
-                             * If the distance to the nearest surface is greater than twice the brick size,
-                             * skip evaluating the full density function for this brick.
-                            */
-
-                            float centreSample = densitySampler.Sample(worldPosition, EmptyDensityValue);
-                            float densityFence = (worldSize * 2.0f) + 1.0f; // Add 1 to catch literal edge cases.
-
-                            if (centreSample > densityFence || centreSample < -densityFence)
+                            if (!result.isUniformState)
                             {
-                                // If we are not already uniform, dispose this object.
-                                if (!isUniformState)
-                                    Dispose();
+                                // Ensure core density is allocated and copy density result.
+                                if (!densityCache.IsAllocated)
+                                    densityCache.Allocate(size, levelScale > 1);
 
-                                isUniformState = true;
+                                densityCache.CopyCoreDensity(result.density);
+
+                                // Ensure renderer is allocated and schedule core remeshing task.
+                                if (!renderer.IsAllocated)
+                                    renderer.Allocate(bounds, levelScale > 1);
+
+                                renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.GetCoreDensityPointer());
                             }
-                            else
+                            else if (!isUniformState)
                             {
-                                // Evaluate the core density function.
-                                double t = 0.0;
-                                Stopwatch.Start(ref t);
-                                DensityEvaluationResult result = s_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
-                                Stopwatch.End(ref t);
-                                s_AvgDensityEvalTime.AddTime(t);
-
-                                // If the result is not uniform, continue to recompute the mesh.
-                                // Else, if this brick is not already uniform, ensure it is disposed.
-
-                                if (!result.isUniformState)
-                                {
-                                    // Ensure core density is allocated and copy density result.
-                                    if (!densityCache.IsAllocated)
-                                        densityCache.Allocate(size, levelScale > 1);
-
-                                    densityCache.CopyCoreDensity(result.density);
-
-                                    // Ensure renderer is allocated and schedule core remeshing task.
-                                    if (!renderer.IsAllocated)
-                                        renderer.Allocate(bounds, levelScale > 1);
-
-                                    renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.GetCoreDensityPointer());
-                                }
-                                else if (!isUniformState)
-                                {
-                                    Dispose();
-                                }
-
-                                // Set new uniformity status.
-                                isUniformState = result.isUniformState;
+                                Dispose();
                             }
+
+                            // Set new uniformity status.
+                            isUniformState = result.isUniformState;
                         }
 
                         // Evaluate transitions.
@@ -779,12 +797,6 @@ namespace LevelGeneration.Terrain
 
                     foreach (Shape shape in shapes)
                     {
-                        if (shape.IsGlobal)
-                        {
-                            intersectingShapes.Add(shape);
-                            continue;
-                        }
-
                         // Get brick volume from shape.
                         shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                         GetBrickVolumeFromAABB(size, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
@@ -837,6 +849,7 @@ namespace LevelGeneration.Terrain
             double renderTime;
 
             public int3 OriginIndex => originIndex;
+            public List<Shape> IntersectingShapes => shapes;
 
             // Order: x, -x, y, -y, z, -z
             static readonly int3[] NeighbourOffsets =
@@ -944,7 +957,7 @@ namespace LevelGeneration.Terrain
 
                 // Update bricks.
                 foreach (int3 brickIndex in bricks.Keys)
-                    bricks[brickIndex].Update(observerCamera, shapes, PackNeighborLOD(brickIndex));
+                    bricks[brickIndex].Update(observerCamera, shapes, scene, PackNeighborLOD(brickIndex));
 
                 if (isMajorUpdate)
                     Stopwatch.End(ref majorUpdateTime);
@@ -1001,12 +1014,6 @@ namespace LevelGeneration.Terrain
 
                 foreach (Shape shape in scene.Shapes)
                 {
-                    if (shape.IsGlobal)
-                    {
-                        shapes.Add(shape);
-                        continue;
-                    }
-
                     // Get brick volume from shape.
                     shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                     GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
@@ -1098,7 +1105,7 @@ namespace LevelGeneration.Terrain
             public float SampleCache(int3 brickIndex, int3 cellIndex)
             {
                 if (!bricks.ContainsKey(brickIndex))
-                    return EmptyDensityValue;
+                    return 32.0f;
 
                 return bricks[brickIndex].SampleCache(cellIndex);
             }
@@ -1108,9 +1115,17 @@ namespace LevelGeneration.Terrain
         {
             readonly List<Shape> shapes = new();
 
+            NoiseSettings surface;
+            NoiseSettings globalNoise;
+            // int globalNoiseIndex; // TODO
+
             public List<Shape> Shapes => shapes;
 
             public int NumShapes => shapes.Count;
+
+            public NoiseSettings Surface => surface;
+
+            public NoiseSettings GlobalNoise => globalNoise;
 
             public bool IsDirty;
 
@@ -1137,6 +1152,46 @@ namespace LevelGeneration.Terrain
                 shapes.Clear();
                 IsDirty = true;
             }
+
+            public void SetSurfaceSettings(NoiseSettings noiseSettings)
+            {
+                surface = noiseSettings;
+                IsDirty = true;
+            }
+
+            public void SetGlobalNoiseSettings(NoiseSettings noiseSettings)
+            {
+                globalNoise = noiseSettings;
+                IsDirty = true;
+            }
+        }
+    }
+
+    public readonly struct NoiseSettings
+    {
+        public readonly float3 offset;
+        public readonly float amplitude;
+        public readonly float frequency;
+        public readonly uint seed;
+
+        public NoiseSettings(float3 offset, float amplitude, float frequency, uint seed)
+        {
+            this.offset = offset;
+            this.amplitude = amplitude;
+            this.frequency = frequency;
+            this.seed = seed;
+        }
+
+        public NoiseSettings(float amplitude, float frequency, uint seed)
+            : this(0.0f, amplitude, frequency, seed)
+        {
+
+        }
+
+        public NoiseSettings(float amplitude, float frequency)
+            : this(0.0f, amplitude, frequency, 0)
+        {
+
         }
     }
 }

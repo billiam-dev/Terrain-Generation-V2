@@ -16,8 +16,6 @@ namespace LevelGeneration.Terrain
 
         public readonly float3 dimentions;
 
-        public bool IsGlobal => (uint)distanceFunction >= 5;
-
         // Multiplier for how much the smoothness value should extend the brick volume effected by this shape.
         // Larger values result in a larger volume allowing for smoothing over larger distances at the expense of speed.
         const float k_SmoothnessVolumeExtentConstant = 4.0f;
@@ -74,12 +72,6 @@ namespace LevelGeneration.Terrain
                 case DistanceFunction.Cube:
                     boundsVolume = dimentions * 2.0f;
                     break;
-
-                case DistanceFunction.Surface:
-                case DistanceFunction.Noise:
-                    position = 0;
-                    volume = 0;
-                    return;
             }
 
             // Pad the volume to account for the smoothing factor around shapes.
@@ -136,9 +128,7 @@ namespace LevelGeneration.Terrain
         SemiSphere = 1,
         Capsule    = 2,
         Torus      = 3,
-        Cube       = 4,
-        Surface    = 5,
-        Noise      = 6
+        Cube       = 4
     }
 
     public enum BlendMode

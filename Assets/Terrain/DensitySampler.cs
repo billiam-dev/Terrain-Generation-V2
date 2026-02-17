@@ -31,10 +31,16 @@ namespace LevelGeneration.Terrain
         NativeArray<DistanceFunctionData> m_DistanceFunctions;
         int m_NumShapesAllocated;
 
-        public void Allocate(List<Shape> shapes, Allocator allocator)
+        NoiseSettings m_SurfaceSettings;
+        NoiseSettings m_GlobalNoiseSettings;
+
+        public void Allocate(List<Shape> shapes, NoiseSettings surface, NoiseSettings globalNoise, Allocator allocator)
         {
             m_NumShapesAllocated = shapes.Count;
             m_DistanceFunctions = new(m_NumShapesAllocated, allocator);
+
+            m_SurfaceSettings = surface;
+            m_GlobalNoiseSettings = globalNoise;
 
             for (int i = 0; i < m_NumShapesAllocated; i++)
             {
@@ -53,28 +59,26 @@ namespace LevelGeneration.Terrain
             m_DistanceFunctions.Dispose();
         }
 
-        public readonly float Sample(float3 worldPosition, float initialDensity)
-        {
-            float result = initialDensity;
+        /* Note that this function is hyper-optimized for it's in-game use case, that is with a terrain surface and single noise layer.
+         * The surface and noise components have been removed as Shape Brushes to avoid having to add extra cases for them in the main loop.
+         * Burst and SIMD should be optimized for branch-less execution.
+        */
 
-            // Apply distance functions.
+        public readonly float Sample(float3 worldPosition)
+        {
+            float result = Surface(worldPosition + m_SurfaceSettings.offset, m_SurfaceSettings.frequency, m_SurfaceSettings.amplitude);
+
             DistanceFunctionData sdf;
             float3 translatedPosition;
             float distance;
 
+            // Apply pre-noise shapes.
             for (int i = 0; i < m_NumShapesAllocated; i++)
             {
                 sdf = m_DistanceFunctions[i];
 
                 // Get a translated position using the shape's inverse matrix (worldToLocal).
                 translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
-
-                // Special case for noise to avoid min/max functions.
-                if (sdf.functionID == 6) // TODO: remove noise as shape (as well as surface). Pass noise index, itterate through pre-noise shapes, then post-noise shapes to cut out this if statement.
-                {
-                    result += Noise(translatedPosition, sdf.dimentions.x, sdf.dimentions.y);
-                    continue;
-                }
 
                 // Calculate the distance value using the SDF function of the current shape.
                 distance = sdf.functionID switch
@@ -84,15 +88,17 @@ namespace LevelGeneration.Terrain
                     2 => Capsule(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
                     3 => Torus(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
                     4 => Cube(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, sdf.dimentions.z),
-                    5 => Surface(translatedPosition, sdf.dimentions.x, sdf.dimentions.y), // TODO: integrate with terrain component, there can only be one surface. Replace initial density w/ this.
                     _ => 0
                 };
 
                 // Mix the old and new distance values using smooth min.
                 result = SmoothMin(result * sdf.minSign, distance, sdf.smoothness) * sdf.minSign;
-
-                // Note: this can have separate Kernal which avoids the expensive SmoothMin call SampleFast, far off terrain would benefit from this if the visual impact is acceptable.
             }
+
+            // Apply noise.
+            result += Noise(worldPosition + m_GlobalNoiseSettings.offset, m_GlobalNoiseSettings.frequency, m_GlobalNoiseSettings.amplitude);
+
+            // Apply post-noise shapes (TODO).
 
             return result;
         }
@@ -150,11 +156,13 @@ namespace LevelGeneration.Terrain
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float Surface(float3 pos, float frequency, float amplitude)
         {
+            float2 samplePos = pos.xz;
+
             float4 noise;
-            noise.x = SimplexNoise.Sample3D(frequency * pos) * amplitude;
-            noise.y = SimplexNoise.Sample3D(2.0f * frequency * pos) * amplitude * 0.5f;
-            noise.z = SimplexNoise.Sample3D(4.0f * frequency * pos) * amplitude * 0.25f;
-            noise.w = SimplexNoise.Sample3D(8.0f * frequency * pos) * amplitude * 0.125f;
+            noise.x = SimplexNoise.Sample2D(frequency * samplePos) * amplitude;
+            noise.y = SimplexNoise.Sample2D(1.7634f * frequency * (samplePos + 4099.0f)) * amplitude * 0.5f;
+            noise.z = SimplexNoise.Sample2D(5.2453f * frequency * (samplePos + 5851.0f)) * amplitude * 0.25f;
+            noise.w = SimplexNoise.Sample2D(7.6346f * frequency * (samplePos + 7549.0f)) * amplitude * 0.125f;
             return pos.y + math.csum(noise);
         }
 
@@ -163,8 +171,8 @@ namespace LevelGeneration.Terrain
         {
             float3 noise;
             noise.x = SimplexNoise.Sample3D(frequency * pos) * amplitude;
-            noise.y = SimplexNoise.Sample3D(2.0f * frequency * pos) * amplitude * 0.5f;
-            noise.z = SimplexNoise.Sample3D(4.0f * frequency * pos) * amplitude * 0.25f;
+            noise.y = SimplexNoise.Sample3D(2.2251f * frequency * (pos + 2521.0f)) * amplitude * 0.5f;
+            noise.z = SimplexNoise.Sample3D(3.5362f * frequency * (pos + 3673.0f)) * amplitude * 0.25f;
             return math.csum(noise);
         }
 

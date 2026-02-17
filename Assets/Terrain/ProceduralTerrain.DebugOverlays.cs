@@ -34,16 +34,6 @@ namespace LevelGeneration.Terrain
             }
         }
 
-        readonly Color[] k_BrickmapLevelDebugColors = new Color[]
-        {
-            new(1.0f, 0.2f, 0.0f, 1.0f),
-            new(0.0f, 1.0f, 0.2f, 0.8f),
-            new(0.2f, 0.0f, 1.0f, 0.6f),
-            new(0.8f, 0.8f, 0.8f, 0.4f),
-            new(0.4f, 0.4f, 0.4f, 0.2f),
-            new(0.1f, 0.1f, 0.1f, 0.1f)
-        };
-
         static Color RandomPastelColor(int3 position)
         {
             System.Random random = new(position.GetHashCode());
@@ -86,10 +76,6 @@ namespace LevelGeneration.Terrain
 
                 foreach (Shape shape in shapes)
                 {
-                    // Skip global shapes.
-                    if (shape.IsGlobal)
-                        continue;
-
                     shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
                     GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
 
