@@ -30,9 +30,6 @@ namespace LevelGeneration.Terrain.Meshing
         [ReadOnly, NativeDisableUnsafePtrRestriction]
         public IntPtr densityPtr;
 
-        [ReadOnly, NativeDisableUnsafePtrRestriction]
-        public IntPtr transitionDensityPtr;
-
         // Output mesh data
         [NativeDisableParallelForRestriction]
         public NativeList<Vertex> vertices;
@@ -200,7 +197,8 @@ namespace LevelGeneration.Terrain.Meshing
         }
     }
 
-    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
+    //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
+    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true)]
     public struct TransitionMeshingJob : IJob
     {
         // Input terrain data
@@ -225,30 +223,15 @@ namespace LevelGeneration.Terrain.Meshing
         {
             for (int x = 0; x < chunkSize; x++)
                 for (int y = 0; y < chunkSize; y++)
-                    MarchCell(new int2(x, y));
+                    MarchCell(new int2(x, y) * 2);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void MarchCell(int2 transitionCellIndex)
         {
-            if (transitionIndex > 2) // TEMP
-                return;
-
-            // Meshing order: (x, -x, y, -y, z, -z)
-            int3 index = transitionIndex switch
-            {
-                0 => new(chunkSize - 1, transitionCellIndex.x, transitionCellIndex.y),
-                1 => new(0, transitionCellIndex.x, transitionCellIndex.y),
-                2 => new(),
-                3 => new(),
-                4 => new(),
-                5 => new(),
-                _ => new()
-            };
-            
             TransitionCorners<float> density = new();
             for (int i = 0; i < 9; i++)
-                density[i] = SampleDensity((index * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][i]);
+                density[i] = SampleDensity(transitionCellIndex + TransvoxelTables.Temp[i]);
 
             float3 packedDensity1 = new(density[0], density[1], density[2]);
             float3 packedDensity2 = new(density[5], density[8], density[7]);
@@ -281,7 +264,7 @@ namespace LevelGeneration.Terrain.Meshing
                 byte cornerIdx0 = (byte)((edgeCode >> 4) & 0x0F);
                 byte cornerIdx1 = (byte)(edgeCode & 0x0F);
 
-                cellIndices[i] = CreateVertex(ref density, index, cornerIdx0, cornerIdx1, transitionIndex);
+                cellIndices[i] = CreateVertex(ref density, transitionCellIndex, cornerIdx0, cornerIdx1, transitionIndex);
 
                 // TODO: Reuse vertices in transition cells.
                 /*
@@ -323,7 +306,7 @@ namespace LevelGeneration.Terrain.Meshing
             }
         }
 
-        ushort CreateVertex(ref TransitionCorners<float> density, int3 index, byte cornerIdx0, byte cornerIdx1, int transitionIndex)
+        ushort CreateVertex(ref TransitionCorners<float> density, int2 transitionCellIndex, byte cornerIdx0, byte cornerIdx1, int transitionIndex)
         {
             // Sample density at cell corners.
             float d0 = density[cornerIdx0];
@@ -333,22 +316,46 @@ namespace LevelGeneration.Terrain.Meshing
             float t = d0 / (d0 - d1);
 
             // Get edge indices.
-            int3 i0 = (index * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx0]];
-            int3 i1 = (index * 2) + TransvoxelTables.TransitionCellOffsets[transitionIndex][TransvoxelTables.TransitionEdgeRemap[cornerIdx1]];
+            int2 i0 = transitionCellIndex + TransvoxelTables.Temp[TransvoxelTables.TransitionEdgeRemap[cornerIdx0]];
+            int2 i1 = transitionCellIndex + TransvoxelTables.Temp[TransvoxelTables.TransitionEdgeRemap[cornerIdx1]];
+
+            // Convert edge indices to local-space.
+            int3 corner0 = transitionIndex switch
+            {
+                0 => new(chunkSize - 1, i0.y, i0.x),
+                1 => new(0, i0.y, i0.x),
+                2 => new(i0.x, chunkSize - 1, i0.y),
+                3 => new(i0.x, 0, i0.y),
+                4 => new(i0.y, i0.x, chunkSize - 1),
+                5 => new(i0.y, i0.x, 0),
+                _ => new()
+            };
+
+            int3 corner1 = transitionIndex switch
+            {
+                0 => new(chunkSize - 1, i1.y, i1.x),
+                1 => new(0, i1.y, i1.x),
+                2 => new(i1.x, chunkSize - 1, i1.y),
+                3 => new(i1.x, 0, i1.y),
+                4 => new(i1.y, i1.x, chunkSize - 1),
+                5 => new(i1.y, i1.x, 0),
+                _ => new()
+            };
 
             // Make edge mask.
-            int edgeMask = MeshingHelpers.GetEdgeMask(i0, i1, chunkSize);
+            int edgeMask = MeshingHelpers.GetEdgeMask(corner0, corner1, chunkSize);
 
             // Compute normal.
-            float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
+            float3 normal = -math.normalize(math.lerp(ComputeNormal(corner0), ComputeNormal(corner1), t));
 
             // Compute primary position.
-            float3 primaryPos = math.lerp((float3)i0, (float3)i1, t);
+            float3 primaryPos = math.lerp((float3)corner0, (float3)corner1, t);
 
             // Compute secondary position.
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
-                secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize) * padding, normal);
+                //secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize) * padding, normal);
+                secondaryPos = primaryPos + (MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize) * padding);
 
             // Add vertex and return its index.
             vertices.Add(new Vertex(MeshingHelpers.TransformPosition(primaryPos, chunkSize, levelScale, worldScale), MeshingHelpers.TransformPosition(secondaryPos, chunkSize, levelScale, worldScale), normal, edgeMask));
@@ -383,7 +390,7 @@ namespace LevelGeneration.Terrain.Meshing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly float3 ComputeNormal(int3 coord)
         {
-            return new float3(0, 1, 0);
+            return new float3(1, 0, 0);
 
             /*
             float3 normal;
@@ -395,9 +402,9 @@ namespace LevelGeneration.Terrain.Meshing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        unsafe readonly float SampleDensity(int3 cellIndex)
-        {            
-            int index = MeshingHelpers.FlattenIndex(cellIndex + 1, (chunkSize * 2) + 3);
+        unsafe readonly float SampleDensity(int2 cellIndex)
+        {
+            int index = MeshingHelpers.FlattenIndex(cellIndex, (chunkSize + 3) * 2);
             float* ptr = (float*)densityPtr;
 
             return *(ptr + index);
@@ -484,6 +491,12 @@ namespace LevelGeneration.Terrain.Meshing
         public static int FlattenIndex(int3 index, int size)
         {
             return (index.z * size * size) + (index.y * size) + index.x;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int FlattenIndex(int2 index, int size)
+        {
+            return (index.y * size) + index.x;
         }
     }
 
@@ -1118,6 +1131,19 @@ namespace LevelGeneration.Terrain.Meshing
             new int3[] { new(0, 0, 0), new(0, 0, 1), new(0, 0, 2), new(1, 0, 0), new(1, 0, 1), new(1, 0, 2), new(2, 0, 0), new(2, 0, 1), new(2, 0, 2) },
             new int3[] { new(0, 0, 2), new(1, 0, 2), new(2, 0, 2), new(0, 1, 2), new(1, 1, 2), new(2, 1, 2), new(0, 2, 2), new(1, 2, 2), new(2, 2, 2) },
             new int3[] { new(0, 0, 0), new(1, 0, 0), new(2, 0, 0), new(0, 1, 0), new(1, 1, 0), new(2, 1, 0), new(0, 2, 0), new(1, 2, 0), new(2, 2, 0) }
+        };
+
+        public static readonly int2[] Temp =
+        {
+            new(0, 0),
+            new(1, 0),
+            new(2, 0),
+            new(0, 1),
+            new(1, 1),
+            new(2, 1),
+            new(0, 2),
+            new(1, 2),
+            new(2, 2)
         };
 
         public static readonly byte[] TransitionEdgeRemap = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 2, 6, 8 };

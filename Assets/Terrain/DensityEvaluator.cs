@@ -28,8 +28,8 @@ namespace LevelGeneration.Terrain
             m_DensityArraySize = extendedBrickSize * extendedBrickSize * extendedBrickSize;
             m_DensityData = new(m_DensityArraySize, Allocator.Persistent);
 
-            int transitionSize = (brickSize * 2) + 3;
-            m_TransitionDensityArraySize = transitionSize * transitionSize * 3;
+            int transitionSize = extendedBrickSize * 2;
+            m_TransitionDensityArraySize = transitionSize * transitionSize;
             m_TransitionDensityData = new(m_TransitionDensityArraySize, Allocator.Persistent);
 
             m_PositiveValueFound = new(Allocator.Persistent);
@@ -84,7 +84,7 @@ namespace LevelGeneration.Terrain
                 levelScale = levelScale,
                 worldScale = worldScale,
                 transitionIndex = transitionIndex,
-                density = m_DensityData
+                density = m_TransitionDensityData
             };
 
             Stopwatch.Start(ref m_ExecutionTime);
@@ -113,8 +113,7 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public float worldScale;
             [ReadOnly] public int levelScale;
 
-            [WriteOnly]
-            public NativeArray<float> density;
+            [WriteOnly] public NativeArray<float> density;
 
             [NativeDisableParallelForRestriction]
             public NativeReference<bool> positiveValueFound;
@@ -161,8 +160,7 @@ namespace LevelGeneration.Terrain
             [ReadOnly] public int levelScale;
             [ReadOnly] public int transitionIndex;
 
-            [WriteOnly]
-            public NativeArray<float> density;
+            [WriteOnly] public NativeArray<float> density;
 
             public void Execute(int index)
             {
@@ -170,21 +168,21 @@ namespace LevelGeneration.Terrain
                 int z = index / (pointsPerAxis * pointsPerAxis);
                 int y = (index / pointsPerAxis) % pointsPerAxis;
                 int x = index % pointsPerAxis;
-                int3 cellIndex = new(x, y, z);
 
+                // Ranges:
                 // x = 0 -> pointsPerAxis (-1)
                 // y = 0 -> pointsPerAxis (-1)
-                // z = 0 -> 3 (-1)
+                // z = 0
 
                 // Order: (x, -x, y, -y, z, -z)
-                cellIndex = transitionIndex switch
+                int3 cellIndex = transitionIndex switch
                 {
-                    0 => new(brickSize - 1 + cellIndex.z, cellIndex.y, cellIndex.x),
-                    1 => new(0 + cellIndex.z, cellIndex.y, cellIndex.x),
-                    2 => new(),
-                    3 => new(),
-                    4 => new(),
-                    5 => new(),
+                    0 => new(brickSize - 1, y, x),
+                    1 => new(0, y, x),
+                    2 => new(x, brickSize - 1, y),
+                    3 => new(x, 0, y),
+                    4 => new(y, x, brickSize - 1),
+                    5 => new(y, x, 0),
                     _ => new()
                 };
 
@@ -193,7 +191,7 @@ namespace LevelGeneration.Terrain
                 // Coord range is double-precision compared to core evaluation jobs for this level.
                 // Therefore we multiply the rest of the calculation by 2 to match.
 
-                float3 worldPosition = (levelScale * worldScale * (float3)(brickIndex * brickSize)) + (cellIndex - 1);
+                float3 worldPosition = (levelScale * worldScale * (float3)(brickIndex * brickSize)) + cellIndex;
 
                 // Store the new density.
                 density[index] = densitySampler.Sample(worldPosition);

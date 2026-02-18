@@ -20,7 +20,6 @@ namespace LevelGeneration.Terrain
         SerializedProperty m_GlobalNoiseSeed;
 
         SerializedProperty m_Material;
-        SerializedProperty m_ForceMainCamera;
         SerializedProperty m_UseStaticOrigin;
         SerializedProperty m_ColorBrickmapLevels;
         SerializedProperty m_DrawBrickmapBorders;
@@ -42,7 +41,6 @@ namespace LevelGeneration.Terrain
         GUIContent m_GlobalNoiseSeedGUI;
 
         GUIContent m_MaterialGUI;
-        GUIContent m_ForceMainCameraGUI;
         GUIContent m_UseStaticOriginGUI;
         GUIContent m_ColorBrickmapLevelsGUI;
         GUIContent m_DrawBrickmapBordersGUI;
@@ -69,7 +67,6 @@ namespace LevelGeneration.Terrain
             m_GlobalNoiseSeed = o.Find(x => x.GlobalNoiseSeed);
 
             m_Material = o.Find(x => x.Material);
-            m_ForceMainCamera = o.Find(x => x.ForceMainCamera);
             m_UseStaticOrigin = o.Find(x => x.UseStaticOrigin);
             m_ColorBrickmapLevels = o.Find(x => x.ColorBrickmapLevels);
             m_DrawBrickmapBorders = o.Find(x => x.m_DrawBrickmapBorders);
@@ -90,7 +87,6 @@ namespace LevelGeneration.Terrain
             m_GlobalNoiseSeedGUI = new GUIContent("Seed");
 
             m_MaterialGUI = new GUIContent("Material");
-            m_ForceMainCameraGUI = new GUIContent("Force Use Main Camera");
             m_UseStaticOriginGUI = new GUIContent("Use Static Origin");
             m_ColorBrickmapLevelsGUI = new GUIContent("Highlight Brickmap Levels");
             m_DrawBrickmapBordersGUI = new GUIContent("Brickmap Bounds");
@@ -130,7 +126,6 @@ namespace LevelGeneration.Terrain
             EditorGUILayout.PropertyField(m_Material, m_MaterialGUI);
 
             EditorGUILayout.LabelField("Debug Options", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(m_ForceMainCamera, m_ForceMainCameraGUI);
             EditorGUILayout.PropertyField(m_UseStaticOrigin, m_UseStaticOriginGUI);
             EditorGUILayout.PropertyField(m_ColorBrickmapLevels, m_ColorBrickmapLevelsGUI);
 

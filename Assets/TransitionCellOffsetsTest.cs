@@ -36,10 +36,11 @@ public class TransitionCellOffsetsTest : MonoBehaviour
 
         for (int i = 0; i < 9; i++)
         {
-            float3 pos = (float3)TransitionCellOffsets[transitionIndex][i] + centre;
+            int3 index = (new int3(0, 0, 0) * 2) + TransitionCellOffsets[transitionIndex][i];
+            float3 pos = (float3)index + centre;
 
             Gizmos.DrawSphere(pos, 0.05f);
-            Handles.Label(pos + new float3(0, 0.1f, 0), i.ToString());
+            Handles.Label(pos + new float3(0, 0.2f, 0), i.ToString());
         }
     }
 }
