@@ -430,7 +430,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 37c5e78ddc5b9cd4d87e75d5ea67129f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ProceduralTerrain
-  EnableSurface: 0
+  EnableSurface: 1
   SurfaceNoiseAmplitude: 70
   SurfaceNoiseFrequency: 0.001
   SurfaceYPosition: 0
@@ -443,7 +443,7 @@ MonoBehaviour:
   UseStaticOrigin: 1
   ColorBrickmapLevels: 0
   m_DrawBrickmapBorders: 0
-  m_DrawBricks: 1
+  m_DrawBricks: 0
   m_DrawShapeVolumes: 0
   m_EnableDensityTester: 0
   m_DensityTesterPosition: {x: 0, y: 20, z: 0}

@@ -158,7 +158,7 @@ namespace LevelGeneration.Terrain.Meshing
             int3 i1 = index + TransvoxelTables.CornerOffsets[cornerIdx1];
 
             // Make edge mask.
-            int edgeMask = levelScale > 1 ? MeshingHelpers.GetEdgeMask(i0, i1, chunkSize) : 0;
+            int edgeMask = levelScale > 1 ? MeshingHelpers.GetEdgeMask(i0, i1, 0, chunkSize) : 0;
 
             // Compute normal.
             float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
@@ -169,7 +169,8 @@ namespace LevelGeneration.Terrain.Meshing
             // Compute secondary position.
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
-                secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize), normal);
+                //secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize), normal);
+                secondaryPos = primaryPos + MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize);
 
             // Add vertex and return its index.
             vertices.Add(new Vertex(
@@ -322,7 +323,7 @@ namespace LevelGeneration.Terrain.Meshing
             // Make edge mask.
             int edgeMask = 0;
             if (cornerIdx0 > 8 && cornerIdx1 > 8)
-                edgeMask = MeshingHelpers.GetEdgeMask(i0, i1, chunkSize * 2);
+                edgeMask = MeshingHelpers.GetEdgeMask(i0 / 2, i1 / 2, 0, chunkSize);
 
             // Compute normal.
             //float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
@@ -335,7 +336,7 @@ namespace LevelGeneration.Terrain.Meshing
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
                 //secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize * 2), normal);
-                secondaryPos = primaryPos + MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize * 2);
+                secondaryPos = primaryPos + (MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos * 0.5f, chunkSize) * 2);
 
             // Add vertex and return its index.
             vertices.Add(new Vertex(
@@ -419,14 +420,14 @@ namespace LevelGeneration.Terrain.Meshing
         const float k_TransitionCellPadding = 0.5f; // TODO: 0.25 prolly
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int GetEdgeMask(int3 i0, int3 i1, int chunkSize)
+        public static int GetEdgeMask(int3 i0, int3 i1, int min, int max)
         {
-            return (i0.x == chunkSize || i1.x == chunkSize ? 1  : 0)
-                 | (i0.x == 0         || i1.x == 0         ? 2  : 0)
-                 | (i0.y == chunkSize || i1.y == chunkSize ? 4  : 0)
-                 | (i0.y == 0         || i1.y == 0         ? 8  : 0)
-                 | (i0.z == chunkSize || i1.z == chunkSize ? 16 : 0)
-                 | (i0.z == 0         || i1.z == 0         ? 32 : 0);
+            return (i0.x == max || i1.x == max ? 1  : 0)
+                 | (i0.x == min || i1.x == min ? 2  : 0)
+                 | (i0.y == max || i1.y == max ? 4  : 0)
+                 | (i0.y == min || i1.y == min ? 8  : 0)
+                 | (i0.z == max || i1.z == max ? 16 : 0)
+                 | (i0.z == min || i1.z == min ? 32 : 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1132,24 +1133,14 @@ namespace LevelGeneration.Terrain.Meshing
 		    new(0, 2, 0), // 6      |   A |-----|-- B      y z
 		    new(1, 2, 0), // 7      3-----4-----5  /       |/
 		    new(2, 2, 0), // 8      | /   |     | /        o--x
-		    new(0, 0, 2), // A      |/    |     |/
-		    new(2, 0, 2), // B	    0-----1-----2
-		    new(0, 2, 2), // C
-		    new(2, 2, 2)  // D
+		    new(0, 0, 0), // A      |/    |     |/
+		    new(2, 0, 0), // B	    0-----1-----2
+		    new(0, 2, 0), // C
+		    new(2, 2, 0)  // D
 	    };
 
-        // Order: (x, -x, y, -y, z, -z)
-        public static readonly int3[][] TransitionCellOffsets =
-        {
-            new int3[] { new(2, 0, 0), new(2, 0, 1), new(2, 0, 2), new(2, 1, 0), new(2, 1, 1), new(2, 1, 2), new(2, 2, 0), new(2, 2, 1), new(2, 2, 2) },
-            new int3[] { new(0, 0, 0), new(0, 0, 1), new(0, 0, 2), new(0, 1, 0), new(0, 1, 1), new(0, 1, 2), new(0, 2, 0), new(0, 2, 1), new(0, 2, 2) },
-            new int3[] { new(0, 2, 0), new(0, 2, 1), new(0, 2, 2), new(1, 2, 0), new(1, 2, 1), new(1, 2, 2), new(2, 2, 0), new(2, 2, 1), new(2, 2, 2) },
-            new int3[] { new(0, 0, 0), new(0, 0, 1), new(0, 0, 2), new(1, 0, 0), new(1, 0, 1), new(1, 0, 2), new(2, 0, 0), new(2, 0, 1), new(2, 0, 2) },
-            new int3[] { new(0, 0, 2), new(1, 0, 2), new(2, 0, 2), new(0, 1, 2), new(1, 1, 2), new(2, 1, 2), new(0, 2, 2), new(1, 2, 2), new(2, 2, 2) },
-            new int3[] { new(0, 0, 0), new(1, 0, 0), new(2, 0, 0), new(0, 1, 0), new(1, 1, 0), new(2, 1, 0), new(0, 2, 0), new(1, 2, 0), new(2, 2, 0) }
-        };
-
-        public static readonly byte[] TransitionEdgeRemap = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 2, 6, 8 };
+        // ^ Note A, B, C, D would have 2 in the z axis, but this has been removed to squish the transition cell into a single line.
+        // It is then unsquished by the secondary vertex position.
 
         // The TransitionCellClass table maps a 9-bit transition cell case index to an equivalence
         // class index. Even though there are 73 equivalence classes in the Transvoxel Algorithm,

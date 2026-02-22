@@ -105,7 +105,7 @@ Shader "Terrain"
                 float4 positionOS = IN.positionOS;
 
                 // Select secondary positions if the vertex edge mask is included in the LOD data.
-                if ((IN.edgeMask & _PackedLODData) > 0)
+                if ((IN.edgeMask & _PackedLODData) == IN.edgeMask)
                     positionOS = IN.sPositionOS;
 
                 Varyings OUT;
@@ -181,7 +181,7 @@ Shader "Terrain"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                return PackedNeighborData();
+                //return PackedNeighborData();
                 //return EdgeMask(IN.edgeMask);
 
                 // Compute materials.
