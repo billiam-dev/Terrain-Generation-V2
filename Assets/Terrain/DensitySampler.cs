@@ -59,9 +59,10 @@ namespace LevelGeneration.Terrain
             m_DistanceFunctions.Dispose();
         }
 
-        /* Note that this function is hyper-optimized for it's in-game use case, that is with a terrain surface and single noise layer.
+        /* 
+         * Note that this function is hyper-optimized for it's in-game use case, that is with a terrain surface and single noise layer.
          * The surface and noise components have been removed as Shape Brushes to avoid having to add extra cases for them in the main loop.
-         * Burst and SIMD should be optimized for branch-less execution.
+         * -> Burst should be optimized for branchless execution.
         */
 
         public readonly float Sample(float3 worldPosition)
@@ -99,6 +100,13 @@ namespace LevelGeneration.Terrain
             result += Noise(worldPosition + m_GlobalNoiseSettings.offset, m_GlobalNoiseSettings.frequency, m_GlobalNoiseSettings.amplitude);
 
             // Apply post-noise shapes (TODO).
+            
+            // Note: in this section we ditch the smooth-min for maximum speed.
+            // The user can apply many more edits than the world generator, which focuses on minimal large shapes.
+            // See constructive solid geometry.
+
+            // Note: for maximum speed, I could introduce a caching system which saves the initial state of the world to avoid the previous step.
+            // This cuts out the expensive smooth min and noise steps, which still allowing for dynamic user shapes.
 
             return result;
         }

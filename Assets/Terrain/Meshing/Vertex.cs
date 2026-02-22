@@ -10,7 +10,7 @@ namespace LevelGeneration.Terrain.Meshing
         public float3 position;
         public float3 normal;
         public float3 secondaryPosition; // Padded position to make room for transition cells.
-        public int edgeMask;
+        public int edgeMask; // TODO: convert to byte to save some memory usage.
 
         public Vertex(float3 position, float3 secondaryPosition, float3 normal, int edgeMask)
         {

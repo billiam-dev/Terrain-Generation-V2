@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -28,7 +29,7 @@ namespace LevelGeneration.Terrain
             m_DensityArraySize = extendedBrickSize * extendedBrickSize * extendedBrickSize;
             m_DensityData = new(m_DensityArraySize, Allocator.Persistent);
 
-            int transitionSize = extendedBrickSize * 2;
+            int transitionSize = (extendedBrickSize * 2) - 1;
             m_TransitionDensityArraySize = transitionSize * transitionSize;
             m_TransitionDensityData = new(m_TransitionDensityArraySize, Allocator.Persistent);
 
@@ -50,12 +51,14 @@ namespace LevelGeneration.Terrain
             m_PositiveValueFound.Value = false;
             m_NegativeValueFound.Value = false;
 
+            int extendedBrickSize = brickSize + 3;
+
             DensityJob job = new()
             {
                 densitySampler = sampler,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
-                pointsPerAxis = brickSize + 3,
+                pointsPerAxis = extendedBrickSize,
                 levelScale = levelScale,
                 worldScale = worldScale,
                 density = m_DensityData,
@@ -75,12 +78,14 @@ namespace LevelGeneration.Terrain
 
         public DensityEvaluationResult ComputeTransition(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale, int transitionIndex)
         {
+            int extendedBrickSize = brickSize + 3;
+
             TransitionDensityJob job = new()
             {
                 densitySampler = sampler,
                 brickIndex = brickIndex,
                 brickSize = brickSize,
-                pointsPerAxis = (brickSize * 2) + 3,
+                pointsPerAxis = (extendedBrickSize * 2) - 1,
                 levelScale = levelScale,
                 worldScale = worldScale,
                 transitionIndex = transitionIndex,
@@ -127,10 +132,11 @@ namespace LevelGeneration.Terrain
                 int z = index / (pointsPerAxis * pointsPerAxis);
                 int y = (index / pointsPerAxis) % pointsPerAxis;
                 int x = index % pointsPerAxis;
-                int3 cellIndex = new(x, y, z);
+                int3 localCellIndex = new(x, y, z);
 
                 // Derrive world position from iteration index.
-                float3 worldPosition = levelScale * worldScale * (float3)(brickIndex * brickSize + cellIndex - 1);
+                int3 globalCellIndex = ((brickIndex * brickSize) + localCellIndex - 1) * levelScale;
+                float3 worldPosition = (float3)globalCellIndex * worldScale;
 
                 // Sample the SDF.
                 float newDensity = densitySampler.Sample(worldPosition);
@@ -139,7 +145,7 @@ namespace LevelGeneration.Terrain
                 density[index] = newDensity;
 
                 // Update positive / negative value flags.
-                if (math.all(cellIndex > 0) && math.all(cellIndex <= brickSize + 2))
+                if (math.all(localCellIndex > 0) && math.all(localCellIndex <= brickSize + 2))
                 {
                     if (newDensity > 0.0f)
                         positiveValueFound.Value = true;
@@ -165,36 +171,45 @@ namespace LevelGeneration.Terrain
             public void Execute(int index)
             {
                 // Unwrap the iteration index into a 3D index using the extended brick size.
+                
+                // Ranges:
+                // x = 0 -> pointsPerAxis (-1)
+                // y = 0 -> pointsPerAxis (-1)
+                // z = 0 -> 3 (-1)
+
                 int z = index / (pointsPerAxis * pointsPerAxis);
                 int y = (index / pointsPerAxis) % pointsPerAxis;
                 int x = index % pointsPerAxis;
 
-                // Ranges:
-                // x = 0 -> pointsPerAxis (-1)
-                // y = 0 -> pointsPerAxis (-1)
-                // z = 0
-
-                // Order: (x, -x, y, -y, z, -z)
-                int3 cellIndex = transitionIndex switch
-                {
-                    0 => new(brickSize - 1, y, x),
-                    1 => new(0, y, x),
-                    2 => new(x, brickSize - 1, y),
-                    3 => new(x, 0, y),
-                    4 => new(y, x, brickSize - 1),
-                    5 => new(y, x, 0),
-                    _ => new()
-                };
-
-                // Derrive world position from iteration index.
+                // Derrive cell index from face index.
+                int3 localCellIndex = FaceToCellIndex(new int3(x, y, z));
 
                 // Coord range is double-precision compared to core evaluation jobs for this level.
                 // Therefore we multiply the rest of the calculation by 2 to match.
-
-                float3 worldPosition = (levelScale * worldScale * (float3)(brickIndex * brickSize)) + cellIndex;
+                int3 globalCellIndex = ((brickIndex * brickSize * 2) + localCellIndex) * levelScale / 2;
+                float3 worldPosition = (float3)globalCellIndex * worldScale;
 
                 // Store the new density.
                 density[index] = densitySampler.Sample(worldPosition);
+
+                // ^ TODO: init tranition density with core density values to avoid duplicate computation.
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            readonly int3 FaceToCellIndex(int3 index)
+            {
+                int scaledBrickSize = brickSize * levelScale;
+
+                return transitionIndex switch
+                {
+                    0 => new(scaledBrickSize - index.z, index.y, index.x), //  x
+                    1 => new(index.z, index.x, index.y),                   // -x
+                    2 => new(index.x, scaledBrickSize - index.z, index.y), //  y
+                    3 => new(index.y, index.z, index.x),                   // -y
+                    4 => new(index.y, index.x, scaledBrickSize - index.z), //  z
+                    5 => new(index.x, index.y, index.z),                   // -z
+                    _ => new(0, 0, 0)
+                };
             }
         }
     }

@@ -67,6 +67,59 @@ namespace LevelGeneration.Terrain
 
                     Gizmos.color = color;
                     Gizmos.DrawWireCube(worldPosition, Vector3.one * worldSize);
+
+                    if (levelScale == 1 || densityModified || isUniformState)
+                        return;
+
+                    for (int i = 0; i < 6; i++)
+                    {
+                        if ((neighborLOD & (1 << i)) != 0)
+                            DrawTransition(i);
+                    }
+                }
+
+                void DrawTransition(int transitionIndex)
+                {
+                    float halfWorldSize = worldSize * 0.5f;
+                    float width = 0.5f;
+
+                    float3 transitionFaceOffset = transitionIndex switch
+                    {
+                        0 => new(halfWorldSize, 0, 0),  //  x
+                        1 => new(-halfWorldSize, 0, 0), // -x
+                        2 => new(0, halfWorldSize, 0),  //  y
+                        3 => new(0, -halfWorldSize, 0), // -y
+                        4 => new(0, 0, halfWorldSize),  //  z
+                        5 => new(0, 0, -halfWorldSize), // -z
+                        _ => new(0, 0, 0)
+                    };
+
+                    float3 transitionSize = transitionIndex switch
+                    {
+                        0 => new(width, halfWorldSize, halfWorldSize), //  x
+                        1 => new(width, halfWorldSize, halfWorldSize), // -x
+                        2 => new(halfWorldSize, width, halfWorldSize), //  y
+                        3 => new(halfWorldSize, width, halfWorldSize), // -y
+                        4 => new(halfWorldSize, halfWorldSize, width), //  z
+                        5 => new(halfWorldSize, halfWorldSize, width), // -z
+                        _ => new(0, 0, 0)
+                    };
+
+                    Color color = transitionIndex switch
+                    {
+                        0 => new(1.0f, 0.0f, 0.0f), //  x
+                        1 => new(0.8f, 0.2f, 0.0f), // -x
+                        2 => new(0.0f, 1.0f, 0.0f), //  y
+                        3 => new(0.0f, 0.8f, 0.2f), // -y
+                        4 => new(0.0f, 0.0f, 1.0f), //  z
+                        5 => new(0.2f, 0.0f, 0.8f), // -z
+                        _ => new(0, 0, 0)
+                    };
+
+                    color.a = 0.5f;
+
+                    Gizmos.color = color;
+                    Gizmos.DrawCube(worldPosition + transitionFaceOffset, transitionSize);
                 }
             }
 

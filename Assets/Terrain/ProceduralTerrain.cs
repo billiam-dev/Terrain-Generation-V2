@@ -478,7 +478,7 @@ namespace LevelGeneration.Terrain
                         // Allocate transition density field.
                         if (!transitionDensity.IsCreated)
                         {
-                            int transitionSize = extendedSize * 2;
+                            int transitionSize = (extendedSize * 2) - 1;
                             
                             transitionDensity = new(transitionSize * transitionSize, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
                             transitionDensityPtr = new(transitionDensity.GetUnsafeReadOnlyPtr());
@@ -723,7 +723,6 @@ namespace LevelGeneration.Terrain
 
                         // Evaluate transitions.
                         // TODO: also evaluate when brickmap origin changes.
-                        /*
                         if (!isUniformState && levelScale > 1)
                         {
                             for (int i = 0; i < 6; i++)
@@ -741,7 +740,6 @@ namespace LevelGeneration.Terrain
                                 }
                             }
                         }
-                        */
 
                         // Dispose density sampler.
                         densitySampler.Dispose();
@@ -1017,7 +1015,7 @@ namespace LevelGeneration.Terrain
                 for (int i = 0; i < 6; i++)
                 {
                     if (BrickOverlapsPreviousLevel(brickIndex + NeighbourOffsets[i]))
-                        neighborLOD |= (byte)(1 << i );
+                        neighborLOD |= (byte)(1 << i);
                 }
 
                 return neighborLOD;

@@ -22,8 +22,6 @@ namespace LevelGeneration.Terrain.Meshing
 
         const int k_InitialArrayCapacity = 61440; // cellsPerBrick (4096) x maxTrianglesPerCell (5) x verticesPerTriangle (3)
 
-        const float k_TransitionCellPadding = 0.5f; // TODO: 0.25f prolly looks better, 0.5f for testing.
-
         const MeshUpdateFlags k_UpdateFlags =
               MeshUpdateFlags.DontNotifyMeshUsers
             | MeshUpdateFlags.DontRecalculateBounds
@@ -77,7 +75,6 @@ namespace LevelGeneration.Terrain.Meshing
                     chunkSize = meshingTask.chunkSize,
                     levelScale = meshingTask.levelScale,
                     worldScale = meshingTask.worldScale,
-                    padding = k_TransitionCellPadding,
                     densityPtr = meshingTask.densityPtr,
                     vertices = m_Vertices,
                     indices = m_Indices,
@@ -94,7 +91,6 @@ namespace LevelGeneration.Terrain.Meshing
                     chunkSize = meshingTask.chunkSize,
                     levelScale = meshingTask.levelScale,
                     worldScale = meshingTask.worldScale,
-                    padding = k_TransitionCellPadding,
                     transitionIndex = meshingTask.transitionIndex,
                     densityPtr = meshingTask.densityPtr,
                     vertices = m_Vertices,

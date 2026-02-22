@@ -61,7 +61,7 @@ Shader "Terrain"
                 float4 positionHCS : SV_POSITION;
                 float3 positionWS  : TEXCOORD0;
                 float3 normalWS    : TEXCOORD1;
-                uint edgeMask      : TEXCOORD2;
+                uint edgeMask      : TEXCOORD2; // TEMP!!
             };
 
             // Surface textures
@@ -105,26 +105,8 @@ Shader "Terrain"
                 float4 positionOS = IN.positionOS;
 
                 // Select secondary positions if the vertex edge mask is included in the LOD data.
-                //if ((IN.edgeMask & _PackedLODData) == IN.edgeMask)
-                //    positionOS = IN.sPositionOS;
-
-                /*
-                if ((IN.edgeMask & _PackedLODData) == 1)
+                if ((IN.edgeMask & _PackedLODData) > 0)
                     positionOS = IN.sPositionOS;
-                if ((IN.edgeMask & _PackedLODData) == 2)
-                    positionOS = IN.sPositionOS;
-                if ((IN.edgeMask & _PackedLODData) == 4)
-                    positionOS = IN.sPositionOS;
-                if ((IN.edgeMask & _PackedLODData) == 8)
-                    positionOS = IN.sPositionOS;
-                if ((IN.edgeMask & _PackedLODData) == 16)
-                    positionOS = IN.sPositionOS;
-                if ((IN.edgeMask & _PackedLODData) == 32)
-                    positionOS = IN.sPositionOS;
-                */
-
-                //if ((IN.edgeMask & _PackedLODData) != 0)
-                //    positionOS = IN.sPositionOS;
 
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(positionOS.xyz);
@@ -149,26 +131,58 @@ Shader "Terrain"
                 return a1 + a2 + a3;
             }
 
+            //
+            // DEBUG
+            //
+
+            half4 PackedNeighborData()
+            {
+                half4 col = 0;
+
+                if ((_PackedLODData & 1) == 1)
+                    col = half4(1.0f, 0.0f, 0.0f, 1.0f);
+                else if ((_PackedLODData & 2) == 2)
+                    col = half4(0.8f, 0.2f, 0.0f, 1.0f);
+                else if ((_PackedLODData & 4) == 4)
+                    col = half4(0.0f, 1.0f, 0.0f, 1.0f);
+                else if ((_PackedLODData & 8) == 8)
+                    col = half4(0.0f, 0.8f, 0.2f, 1.0f);
+                else if ((_PackedLODData & 16) == 16)
+                    col = half4(0.0f, 0.0f, 1.0f, 1.0f);
+                else if ((_PackedLODData & 32) == 32)
+                    col = half4(0.2f, 0.0f, 0.8f, 1.0f);
+
+                return saturate(col + 0.02f);
+            }
+
+            half4 EdgeMask(uint edgeMask)
+            {
+                half4 col = 0;
+
+                if ((edgeMask & 1) == 1)
+                    col += half4(1.0f, 0.0f, 0.0f, 1.0f);
+                if ((edgeMask & 2) == 2)
+                    col += half4(0.8f, 0.2f, 0.0f, 1.0f);
+                if ((edgeMask & 4) == 4)
+                    col += half4(0.0f, 1.0f, 0.0f, 1.0f);
+                if ((edgeMask & 8) == 8)
+                    col += half4(0.0f, 0.8f, 0.2f, 1.0f);
+                if ((edgeMask & 16) == 16)
+                    col += half4(0.0f, 0.0f, 1.0f, 1.0f);
+                if ((edgeMask & 32) == 32)
+                    col += half4(0.2f, 0.0f, 0.8f, 1.0f);
+
+                return saturate(col + 0.02f);
+            }
+
+            //
+            // END DEBUG
+            //
+
             half4 frag(Varyings IN) : SV_Target
             {
-                /*
-                float4 col = float4(0, 0, 0, 0);
-
-                if ((IN.edgeMask & 1) == 1)
-                    col.r += 0.5f;
-                if ((IN.edgeMask & 2) == 2)
-                    col.g += 0.5f;
-                if ((IN.edgeMask & 4) == 4)
-                    col.b += 0.5f;
-                if ((IN.edgeMask & 8) == 8)
-                    col.r += 0.25f;
-                if ((IN.edgeMask & 16) == 16)
-                    col.g += 0.25f;
-                if ((IN.edgeMask & 32) == 32)
-                    col.b += 0.25f;
-
-                return col;
-                */
+                return PackedNeighborData();
+                //return EdgeMask(IN.edgeMask);
 
                 // Compute materials.
                 half4 surfaceColor = ComputeTriplanarTexture(_SurfaceMetallicAlbedo, sampler_SurfaceMetallicAlbedo, _SurfaceMetallicAlbedo_ST, IN.positionWS, IN.normalWS);
