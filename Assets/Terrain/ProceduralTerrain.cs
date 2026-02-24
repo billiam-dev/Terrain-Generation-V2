@@ -479,8 +479,9 @@ namespace LevelGeneration.Terrain
                         if (allocateTransition && !transitionDensity.IsCreated)
                         {
                             int transitionSize = (extendedSize * 2) - 1;
-                            
-                            transitionDensity = new(transitionSize * transitionSize * 3, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                            int totalTransitionPoints = transitionSize * transitionSize * 3;
+
+                            transitionDensity = new(totalTransitionPoints, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
                             transitionDensityPtr = new(transitionDensity.GetUnsafeReadOnlyPtr());
                         }
 

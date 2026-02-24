@@ -399,7 +399,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &337805762
 Transform:
   m_ObjectHideFlags: 0
@@ -436,7 +436,7 @@ MonoBehaviour:
   SurfaceNoiseFrequency: 0.001
   SurfaceYPosition: 0
   SurfaceSeed: 0
-  EnableGlobalNoise: 0
+  EnableGlobalNoise: 1
   GlobalNoiseAmplitude: 4
   GlobalNoiseFrequency: 0.02
   GlobalNoiseSeed: 0
@@ -897,7 +897,7 @@ Transform:
   m_GameObject: {fileID: 1106533099}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 64, y: 0, z: 32}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -918,7 +918,7 @@ MonoBehaviour:
   m_BrickSize: 8
   m_Level: 1
   m_ShowTransitionDemo: 1
-  m_TransitionIndex: 0
+  m_TransitionIndex: 1
 --- !u!1 &1259197618
 GameObject:
   m_ObjectHideFlags: 0

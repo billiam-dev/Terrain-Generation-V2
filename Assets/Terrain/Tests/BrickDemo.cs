@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -24,64 +25,70 @@ namespace LevelGeneration.Terrain.Tests
 
         void OnDrawGizmos()
         {
-            // Per axis; add one to complete cells on the maximum extent, then one either side for normal sampling.
-            int corePointsPerAxis = m_BrickSize + 1 + 2;
+            Gizmos.matrix = transform.localToWorldMatrix;
 
+            // Create level scale from the level index with (2 ^ levelScale).
+            // Bitshifting is used to fufill the above equation.
             int levelScale = 1 << m_Level;
 
-            DrawCore(corePointsPerAxis, levelScale);
+            // Per axis; add one to complete cells on the maximum extent, then one either side for normal sampling.
+            int corePointsPerAxis = m_BrickSize + 1 + 2;
+            int corePointsTotal = corePointsPerAxis * corePointsPerAxis * corePointsPerAxis;
+
+            DrawCore(corePointsTotal, corePointsPerAxis, levelScale);
 
             if (m_ShowTransitionDemo && m_Level > 0)
-                DrawTransition(corePointsPerAxis, levelScale);
-        }
-
-        void DrawCore(int corePointsPerAxis, int levelScale)
-        {
-            for (int x = 0; x < corePointsPerAxis; x++)
             {
-                for (int y = 0; y < corePointsPerAxis; y++)
-                {
-                    for (int z = 0; z < corePointsPerAxis; z++)
-                    {
-                        int3 localCellCoord = new(x, y, z);
-                        localCellCoord -= 1; // Subtract one from all axis to fetch normals from the minimal edges.
+                int transitionPointsPerAxis = (corePointsPerAxis * 2) - 1;
+                int transitionPointsTotal = transitionPointsPerAxis * transitionPointsPerAxis * 3;
 
-                        int3 globalCellCoord = localCellCoord * levelScale;
-
-                        Gizmos.color = math.all(localCellCoord >= 0) && math.all(localCellCoord < m_BrickSize) ? CoreCellColor : ExtendedCellColor;
-                        Gizmos.DrawSphere((float3)globalCellCoord, levelScale * 0.05f);
-                    }
-                }
+                DrawTransition(transitionPointsTotal, transitionPointsPerAxis, levelScale);
             }
         }
 
-        void DrawTransition(int corePointsPerAxis, int levelScale)
+        void DrawCore(int corePointsTotal, int corePointsPerAxis, int levelScale)
         {
-            Gizmos.color = TransitionCellColor;
-
-            int transitionPointsPerAxis = (corePointsPerAxis * 2) - 1;
-
-            for (int x = 0; x < transitionPointsPerAxis; x++)
+            for (int i = 0; i < corePointsTotal; i++)
             {
-                for (int y = 0; y < transitionPointsPerAxis; y++)
-                {
-                    for (int z = 0; z < 3; z++)
-                    {
-                        int3 faceCoord = new(x, y, z);
+                int z = i / (corePointsPerAxis * corePointsPerAxis);
+                int y = (i / corePointsPerAxis) % corePointsPerAxis;
+                int x = i % corePointsPerAxis;
 
-                        // Subtract 2 (one full cell at this resolution) from the x and y axis.
-                        faceCoord.x -= 2;
-                        faceCoord.y -= 2;
+                int3 localCellCoord = new(x, y, z);
+                localCellCoord -= 1; // Subtract one from all axis to fetch normals from the minimal edges.
 
-                        // Subtract 1 (one full cell at half resolution) from the z axis to fetch one point from +z and one from -z. This is for normal vectors.
-                        faceCoord.z -= 1;
+                int3 globalCellCoord = localCellCoord * levelScale;
 
-                        int3 localCellCoord = FaceToCellIndex(faceCoord);
-                        int3 globalCellCoord = localCellCoord * (levelScale / 2);
+                Gizmos.color = math.all(localCellCoord >= 0) && math.all(localCellCoord < m_BrickSize) ? CoreCellColor : ExtendedCellColor;
+                Gizmos.DrawSphere((float3)globalCellCoord, levelScale * 0.05f);
+            }
+        }
 
-                        Gizmos.DrawSphere((float3)globalCellCoord, levelScale * 0.05f);
-                    }
-                }
+        void DrawTransition(int transitionPointsTotal, int transitionPointsPerAxis, int levelScale)
+        {
+            for (int i = 0; i < transitionPointsTotal; i++)
+            {
+                int z = i / (transitionPointsPerAxis * transitionPointsPerAxis);
+                int y = (i / transitionPointsPerAxis) % transitionPointsPerAxis;
+                int x = i % transitionPointsPerAxis;
+
+                int3 faceCoord = new(x, y, z);
+
+                // Subtract 2 (one full cell at this resolution) from the x and y axis.
+                faceCoord.x -= 2;
+                faceCoord.y -= 2;
+
+                // Subtract 1 (one full cell at half resolution) from the z axis to fetch one point from +z and one from -z. This is for normal vectors.
+                faceCoord.z -= 1;
+
+                // Re-align the z offsets with the larger grid to mirror the LOD of the core normals.
+                faceCoord.z *= 2;
+
+                int3 localCellCoord = FaceToCellIndex(faceCoord);
+                int3 globalCellCoord = localCellCoord * (levelScale / 2);
+
+                Gizmos.color = TransitionCellColor;
+                Gizmos.DrawSphere((float3)globalCellCoord, levelScale * 0.05f);
             }
         }
 

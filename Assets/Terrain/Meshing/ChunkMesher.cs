@@ -67,6 +67,8 @@ namespace LevelGeneration.Terrain.Meshing
             m_Indices.Clear();
             m_VertexIndices = new(meshingTask.chunkSize * meshingTask.chunkSize * meshingTask.chunkSize, Allocator.TempJob);
 
+            int extendedChunkSize = meshingTask.chunkSize + 3;
+
             if (meshingTask.transitionIndex == -1)
             {
                 CoreMeshingJob mesherJob = new()
@@ -76,6 +78,7 @@ namespace LevelGeneration.Terrain.Meshing
                     levelScale = meshingTask.levelScale,
                     worldScale = meshingTask.worldScale,
                     densityPtr = meshingTask.densityPtr,
+                    pointsPerAxis = extendedChunkSize,
                     vertices = m_Vertices,
                     indices = m_Indices,
                     vertexIndices = m_VertexIndices
@@ -93,6 +96,7 @@ namespace LevelGeneration.Terrain.Meshing
                     worldScale = meshingTask.worldScale,
                     transitionIndex = meshingTask.transitionIndex,
                     densityPtr = meshingTask.densityPtr,
+                    pointsPerAxis = (extendedChunkSize * 2) - 1,
                     vertices = m_Vertices,
                     indices = m_Indices
                 };
