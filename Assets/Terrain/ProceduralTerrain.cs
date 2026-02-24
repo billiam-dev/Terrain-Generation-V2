@@ -476,11 +476,11 @@ namespace LevelGeneration.Terrain
                         }
 
                         // Allocate transition density field.
-                        if (!transitionDensity.IsCreated)
+                        if (allocateTransition && !transitionDensity.IsCreated)
                         {
                             int transitionSize = (extendedSize * 2) - 1;
                             
-                            transitionDensity = new(transitionSize * transitionSize, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                            transitionDensity = new(transitionSize * transitionSize * 3, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
                             transitionDensityPtr = new(transitionDensity.GetUnsafeReadOnlyPtr());
                         }
 
@@ -523,7 +523,7 @@ namespace LevelGeneration.Terrain
 
                     public bool IsAllocated => isAllocated;
 
-                    public void Allocate(float worldSize, bool allocTransition)
+                    public void Allocate(float worldSize, bool allocateTransition)
                     {
                         Bounds bounds = new(Vector3.zero, Vector3.one * worldSize);
 
@@ -532,7 +532,7 @@ namespace LevelGeneration.Terrain
                             bounds = bounds
                         };
 
-                        if (allocTransition)
+                        if (allocateTransition)
                         {
                             transitionMesh = new()
                             {

@@ -30,7 +30,7 @@ namespace LevelGeneration.Terrain
             m_DensityData = new(m_DensityArraySize, Allocator.Persistent);
 
             int transitionSize = (extendedBrickSize * 2) - 1;
-            m_TransitionDensityArraySize = transitionSize * transitionSize;
+            m_TransitionDensityArraySize = transitionSize * transitionSize * 3;
             m_TransitionDensityData = new(m_TransitionDensityArraySize, Allocator.Persistent);
 
             m_PositiveValueFound = new(Allocator.Persistent);
@@ -99,15 +99,8 @@ namespace LevelGeneration.Terrain
             return new DensityEvaluationResult(m_TransitionDensityData, false, m_ExecutionTime);
         }
 
-        /*
-         * Note: cannot use [FloatMode = FloatMode.Fast] for these Jobs.
-         * Doing so quickly introduces large errors when moving away from the world origin.
-         * 
-         * Note: I could possibly re-introduce this setting by localising the shapes around the brickIndex.
-         * So, brickIndex is always treated as the world centre. However, this may still introduce small gaps in the terrain.
-         * TODO: test this!
-        */
-
+        // Note: [FloatMode = FloatMode.Fast] is potentially sketchy for these Jobs.
+        
         [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct DensityJob : IJobFor
         {
@@ -155,7 +148,7 @@ namespace LevelGeneration.Terrain
             }
         }
 
-        [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
+        [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct TransitionDensityJob : IJobFor
         {
             [ReadOnly] public DensitySampler densitySampler;
@@ -183,10 +176,10 @@ namespace LevelGeneration.Terrain
 
                 // Derrive cell index from face index.
                 int3 localCellIndex = FaceToCellIndex(new int3(x, y, z));
-
+                
                 // Coord range is double-precision compared to core evaluation jobs for this level.
                 // Therefore we multiply the rest of the calculation by 2 to match.
-                int3 globalCellIndex = ((brickIndex * brickSize * 2) + localCellIndex) * levelScale / 2;
+                int3 globalCellIndex = ((brickIndex * brickSize * 2) + localCellIndex - 1) * levelScale / 2;
                 float3 worldPosition = (float3)globalCellIndex * worldScale;
 
                 // Store the new density.

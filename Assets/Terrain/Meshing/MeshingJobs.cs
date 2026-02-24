@@ -16,8 +16,7 @@ namespace LevelGeneration.Terrain.Meshing
 
     #region JOBs
 
-    //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    [BurstCompile]
+    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct CoreMeshingJob : IJob
     {
         // Input terrain data
@@ -153,24 +152,24 @@ namespace LevelGeneration.Terrain.Meshing
             // Calculate interpolator.
             float t = d0 / (d0 - d1);
 
-            // Get edge indices.
-            int3 i0 = index + TransvoxelTables.CornerOffsets[cornerIdx0];
-            int3 i1 = index + TransvoxelTables.CornerOffsets[cornerIdx1];
+            // Get edge vertex positions.
+            int3 cornerCoord0 = index + TransvoxelTables.CornerOffsets[cornerIdx0];
+            int3 cornerCoord1 = index + TransvoxelTables.CornerOffsets[cornerIdx1];
 
             // Make edge mask.
-            int edgeMask = levelScale > 1 ? MeshingHelpers.GetEdgeMask(i0, i1, 0, chunkSize) : 0;
+            int edgeMask = levelScale > 1 ? MeshingHelpers.GetEdgeMask(cornerCoord0, cornerCoord1, 0, chunkSize) : 0;
 
             // Compute normal.
-            float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
+            float3 normal = -math.normalize(math.lerp(ComputeNormal(cornerCoord0), ComputeNormal(cornerCoord1), t));
 
             // Compute primary position.
-            float3 primaryPos = math.lerp((float3)i0, (float3)i1, t);
+            float3 primaryPos = math.lerp((float3)cornerCoord0, (float3)cornerCoord1, t);
 
             // Compute secondary position.
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
                 //secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize), normal);
-                secondaryPos = primaryPos + MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize);
+                secondaryPos += MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize);
 
             // Add vertex and return its index.
             vertices.Add(new Vertex(
@@ -186,24 +185,25 @@ namespace LevelGeneration.Terrain.Meshing
         readonly float3 ComputeNormal(int3 coord)
         {
             float3 normal;
-            normal.x = SampleDensity(coord - Axis.right) - SampleDensity(coord + Axis.right);
-            normal.y = SampleDensity(coord - Axis.up) - SampleDensity(coord + Axis.up);
-            normal.z = SampleDensity(coord - Axis.forward) - SampleDensity(coord + Axis.forward);
+            normal.x = SampleDensity(coord - TransvoxelTables.Axis[0]) - SampleDensity(coord + TransvoxelTables.Axis[0]);
+            normal.y = SampleDensity(coord - TransvoxelTables.Axis[1]) - SampleDensity(coord + TransvoxelTables.Axis[1]);
+            normal.z = SampleDensity(coord - TransvoxelTables.Axis[2]) - SampleDensity(coord + TransvoxelTables.Axis[2]);
             return normal;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         unsafe readonly float SampleDensity(int3 cellIndex)
         {
-            int index = MeshingHelpers.FlattenIndex(cellIndex + 1, chunkSize + 3);
+            int extendedChunkSize = chunkSize + 3;  // TODO: pass in or set as const to avoid repeated computation.
+
+            int index = MeshingHelpers.FlattenIndex(cellIndex + 1, extendedChunkSize);
             float* ptr = (float*)densityPtr;
 
             return *(ptr + index);
         }
     }
 
-    //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true)]
+    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct TransitionMeshingJob : IJob
     {
         // Input terrain data
@@ -316,32 +316,35 @@ namespace LevelGeneration.Terrain.Meshing
             // Calculate interpolator.
             float t = d0 / (d0 - d1);
 
-            // Get edge indices.
-            int3 i0 = FaceToCellIndex((index * 2) + TransvoxelTables.TransitionCornerOffsets[cornerIdx0]);
-            int3 i1 = FaceToCellIndex((index * 2) + TransvoxelTables.TransitionCornerOffsets[cornerIdx1]);
+            // Get edge vertex positions.
+            int3 i0 = (index * 2) + TransvoxelTables.TransitionCornerOffsets[cornerIdx0];
+            int3 i1 = (index * 2) + TransvoxelTables.TransitionCornerOffsets[cornerIdx1];
+
+            int3 cornerCoord0 = FaceToCellIndex(i0);
+            int3 cornerCoord1 = FaceToCellIndex(i1);
 
             // Make edge mask.
             int edgeMask = 0;
             if (cornerIdx0 > 8 && cornerIdx1 > 8)
-                edgeMask = MeshingHelpers.GetEdgeMask(i0 / 2, i1 / 2, 0, chunkSize);
+                edgeMask = MeshingHelpers.GetEdgeMask(cornerCoord0 / 2, cornerCoord1 / 2, 0, chunkSize);
 
             // Compute normal.
-            //float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
-           float3 normal = new(0, 1, 0);
+            float3 normal = -math.normalize(math.lerp(ComputeNormal(i0), ComputeNormal(i1), t));
+            //float3 normal = new(0, 1, 0);
 
             // Compute primary position.
-            float3 primaryPos = math.lerp((float3)i0, (float3)i1, t);
+            float3 primaryPos = math.lerp((float3)cornerCoord0 * 0.5f, (float3)cornerCoord1 * 0.5f, t);
 
             // Compute secondary position.
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
-                //secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize * 2), normal);
-                secondaryPos = primaryPos + (MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos * 0.5f, chunkSize) * 2);
+                //secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize), normal);
+                secondaryPos += MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize);
 
             // Add vertex and return its index.
             vertices.Add(new Vertex(
-                MeshingHelpers.TransformPosition(primaryPos, chunkSize * 2, levelScale / 2, worldScale),
-                MeshingHelpers.TransformPosition(secondaryPos, chunkSize * 2, levelScale / 2, worldScale),
+                MeshingHelpers.TransformPosition(primaryPos, chunkSize, levelScale, worldScale),
+                MeshingHelpers.TransformPosition(secondaryPos, chunkSize, levelScale, worldScale),
                 normal,
                 edgeMask));
 
@@ -392,10 +395,12 @@ namespace LevelGeneration.Terrain.Meshing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         readonly float3 ComputeNormal(int3 coord)
         {
+            int3[] axis = TransvoxelTables.TransitionAxis[transitionIndex];
+
             float3 normal;
-            normal.x = SampleDensity(coord - Axis.right) - SampleDensity(coord + Axis.right);
-            normal.y = SampleDensity(coord - Axis.up) - SampleDensity(coord + Axis.up);
-            normal.z = SampleDensity(coord - Axis.forward) - SampleDensity(coord + Axis.forward);
+            normal.x = SampleDensity(coord - axis[0]) - SampleDensity(coord + axis[0]);
+            normal.y = SampleDensity(coord - axis[1]) - SampleDensity(coord + axis[1]);
+            normal.z = SampleDensity(coord - axis[2]) - SampleDensity(coord + axis[2]);
             return normal;
         }
 
@@ -403,9 +408,9 @@ namespace LevelGeneration.Terrain.Meshing
         unsafe readonly float SampleDensity(int3 cellIndex)
         {
             int extendedChunkSize = chunkSize + 3;
-            int transitionPointsPerAxis = (extendedChunkSize * 2) - 1;
+            int transitionPointsPerAxis = (extendedChunkSize * 2) - 1; // TODO: pass in or set as const to avoid repeated computation.
 
-            int index = MeshingHelpers.FlattenIndex(cellIndex, transitionPointsPerAxis);
+            int index = MeshingHelpers.FlattenIndex(cellIndex + 1, transitionPointsPerAxis);
             float* ptr = (float*)densityPtr;
 
             return *(ptr + index);
@@ -503,13 +508,6 @@ namespace LevelGeneration.Terrain.Meshing
     #endregion
 
     #region Helper Objects
-
-    readonly struct Axis
-    {
-        public static readonly int3 right = new(1, 0, 0);
-        public static readonly int3 up = new(0, 1, 0);
-        public static readonly int3 forward = new(0, 0, 1);
-    }
 
     public struct ReuseCellVertexIndices
     {
@@ -804,6 +802,21 @@ namespace LevelGeneration.Terrain.Meshing
 
     readonly struct TransvoxelTables
     {
+        public static readonly int3[] Axis =
+        {
+            new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)
+        };
+
+        public static readonly int3[][] TransitionAxis =
+        {
+            new int3[] { new(0, 0, -1), new(-1, 0, 0), new(0, -1, 0) }, //  x
+            new int3[] { new(0, 0, 1), new(1, 0, 0), new(0, 1, 0) },    // -x
+            new int3[] { new(0, -1, 0), new(0, 0, -1), new(-1, 0, 0) }, //  y
+            new int3[] { new(0, 1, 0), new(0, 0, 1), new(1, 0, 0) },    // -y
+            new int3[] { new(-1, 0, 0), new(0, -1, 0), new(0, 0, -1) }, //  z
+            new int3[] { new(1, 0, 0), new(0, 1, 0), new(0, 0, 1) }     // -z
+        };
+
         public static readonly int3[] CornerOffsets =
         {
             new(0, 0, 0), // 0         6-------7
@@ -1123,7 +1136,7 @@ namespace LevelGeneration.Terrain.Meshing
         };
 
         public static readonly int3[] TransitionCornerOffsets =
-            {
+        {
             new(0, 0, 0), // 0	        C-----------D
 		    new(1, 0, 0), // 1         /|          /|
 		    new(2, 0, 0), // 2        / |         / |
