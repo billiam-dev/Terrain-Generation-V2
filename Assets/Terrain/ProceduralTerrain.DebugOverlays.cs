@@ -18,13 +18,13 @@ namespace LevelGeneration.Terrain
             if (m_DrawBrickmapBorders)
             {
                 for (int i = 0; i < k_NumBrickmapLevels; i++)
-                    m_BrickmapLevels[i].DrawBounds(k_BrickmapLevelDebugColors[i]);
+                    m_BrickmapLevels[i].DrawBounds();
             }
 
             if (m_DrawBricks)
             {
                 for (int i = 0; i < k_NumBrickmapLevels; i++)
-                    m_BrickmapLevels[i].DrawBricks(k_BrickmapLevelDebugColors[i]);
+                    m_BrickmapLevels[i].DrawBricks();
             }
 
             if (m_DrawShapeVolumes)
@@ -150,21 +150,21 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            public void DrawBounds(Color color)
+            public void DrawBounds()
             {
                 float3 worldBrickSize = brickSize * levelScale * worldScale;
 
                 float3 brickmapLevelCentre = worldBrickSize * originIndex;
                 float3 brickMapLevelSize = brickmapSize * worldBrickSize;
 
-                Gizmos.color = color;
+                Gizmos.color = DebugColors[levelIndex];
                 Gizmos.DrawWireCube(brickmapLevelCentre, brickMapLevelSize);
             }
 
-            public void DrawBricks(Color color)
+            public void DrawBricks()
             {
                 foreach (Brick brick in bricks.Values)
-                    brick.Draw(color);
+                    brick.Draw(DebugColors[levelIndex]);
             }
         }
     }

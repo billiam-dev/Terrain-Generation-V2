@@ -442,7 +442,6 @@ MonoBehaviour:
   GlobalNoiseSeed: 0
   Material: {fileID: 2100000, guid: 3bacf5dc387e5bc418e75b63a7ac8e9b, type: 2}
   UseStaticOrigin: 1
-  ColorBrickmapLevels: 0
   m_DrawBrickmapBorders: 0
   m_DrawBricks: 0
   m_DrawShapeVolumes: 0
@@ -897,7 +896,7 @@ Transform:
   m_GameObject: {fileID: 1106533099}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 64, y: 0, z: 32}
+  m_LocalPosition: {x: -80, y: 16, z: 32}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

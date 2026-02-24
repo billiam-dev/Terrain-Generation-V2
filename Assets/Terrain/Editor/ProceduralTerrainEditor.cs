@@ -21,7 +21,6 @@ namespace LevelGeneration.Terrain
 
         SerializedProperty m_Material;
         SerializedProperty m_UseStaticOrigin;
-        SerializedProperty m_ColorBrickmapLevels;
         SerializedProperty m_DrawBrickmapBorders;
         SerializedProperty m_DrawBricks;
         SerializedProperty m_DrawShapeVolumes;
@@ -42,7 +41,6 @@ namespace LevelGeneration.Terrain
 
         GUIContent m_MaterialGUI;
         GUIContent m_UseStaticOriginGUI;
-        GUIContent m_ColorBrickmapLevelsGUI;
         GUIContent m_DrawBrickmapBordersGUI;
         GUIContent m_DrawBricksGUI;
         GUIContent m_DrawShapeVolumesGUI;
@@ -68,7 +66,6 @@ namespace LevelGeneration.Terrain
 
             m_Material = o.Find(x => x.Material);
             m_UseStaticOrigin = o.Find(x => x.UseStaticOrigin);
-            m_ColorBrickmapLevels = o.Find(x => x.ColorBrickmapLevels);
             m_DrawBrickmapBorders = o.Find(x => x.m_DrawBrickmapBorders);
             m_DrawBricks = o.Find(x => x.m_DrawBricks);
             m_DrawShapeVolumes = o.Find(x => x.m_DrawShapeVolumes);
@@ -88,7 +85,6 @@ namespace LevelGeneration.Terrain
 
             m_MaterialGUI = new GUIContent("Material");
             m_UseStaticOriginGUI = new GUIContent("Use Static Origin");
-            m_ColorBrickmapLevelsGUI = new GUIContent("Highlight Brickmap Levels");
             m_DrawBrickmapBordersGUI = new GUIContent("Brickmap Bounds");
             m_DrawBricksGUI = new GUIContent("Bricks");
             m_DrawShapeVolumesGUI = new GUIContent("Shape Volumes");
@@ -127,7 +123,22 @@ namespace LevelGeneration.Terrain
 
             EditorGUILayout.LabelField("Debug Options", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(m_UseStaticOrigin, m_UseStaticOriginGUI);
-            EditorGUILayout.PropertyField(m_ColorBrickmapLevels, m_ColorBrickmapLevelsGUI);
+
+            EditorGUI.BeginChangeCheck();
+            bool highlightBrickmapLevels = EditorGUILayout.Toggle("Highlight Brickmap Levels", ProceduralTerrain.HighlightBrickmapLevels);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(target, "Toggle Highlight Brickmap Levels");
+                ProceduralTerrain.HighlightBrickmapLevels = highlightBrickmapLevels;
+            }
+
+            EditorGUI.BeginChangeCheck();
+            bool highlightTransitionMeshes = EditorGUILayout.Toggle("Highlight Transition Meshes", ProceduralTerrain.HighlightTransitionMeshes);
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(target, "Toggle Highlight Transition Meshes");
+                ProceduralTerrain.HighlightTransitionMeshes = highlightTransitionMeshes;
+            }
 
             EditorGUILayout.LabelField("Debug Overlays (Editor only)", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(m_DrawBrickmapBorders, m_DrawBrickmapBordersGUI);

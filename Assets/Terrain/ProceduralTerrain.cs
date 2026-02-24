@@ -51,10 +51,24 @@ namespace LevelGeneration.Terrain
         public bool UseStaticOrigin;
 
         /// <summary>
-        /// Debug option, highlight the brickmap levels.
+        /// Debug option, color each brickmap level differently.
         /// </summary>
-        [Tooltip("Debug option, highlight the brickmap levels.")]
-        public bool ColorBrickmapLevels;
+        [Tooltip("Debug option, color each brickmap level differently.")]
+        public static bool HighlightBrickmapLevels
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Debug option, highlight the brick transition meshes.
+        /// </summary>
+        [Tooltip("Debug option, highlight brick transition meshes.")]
+        public static bool HighlightTransitionMeshes
+        {
+            get;
+            set;
+        }
 
         /// <summary>
         /// Set the camera through which the user is viewing the terrain.
@@ -90,16 +104,6 @@ namespace LevelGeneration.Terrain
         const int k_BrickSize = 16;           // The number of cells per axis contained in a single brick.
         const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
         const int k_NumBrickmapLevels = 2;    // The number of brickmap levels, each doubling the grid size of the previous level.
-
-        readonly Color[] k_BrickmapLevelDebugColors = new Color[]
-        {
-            new(1.0f, 0.2f, 0.0f, 1.0f),
-            new(0.0f, 1.0f, 0.2f, 0.8f),
-            new(0.2f, 0.0f, 1.0f, 0.6f),
-            new(0.8f, 0.8f, 0.8f, 0.4f),
-            new(0.4f, 0.4f, 0.4f, 0.2f),
-            new(0.1f, 0.1f, 0.1f, 0.1f)
-        };
 
         void OnEnable()
         {
@@ -254,10 +258,7 @@ namespace LevelGeneration.Terrain
             //CommandBuffer commandBuffer = CommandBufferPool.Get("Terrain CMD");
 
             for (int i = 0; i < k_NumBrickmapLevels; i++)
-            {
-                m_MaterialProperties.SetColor("_ClipmapDebugColor", ColorBrickmapLevels ? k_BrickmapLevelDebugColors[i] : Color.white);
                 m_BrickmapLevels[i].Render(camera, Material, m_MaterialProperties);
-            }
             
             //cmd.DrawMultipleMeshes();
 
@@ -582,17 +583,19 @@ namespace LevelGeneration.Terrain
 
                     public void Draw(float3 position, Material material, MaterialPropertyBlock mpb, Camera camera, byte neighborLOD)
                     {
-                        // Set neighbour LOD data for this brick.
-                        mpb.SetInt("_PackedLODData", neighborLOD);
+                        // Set neighbor LOD data for this brick.
+                        mpb.SetInt(ShaderIDs.PackedNeighborLOD, neighborLOD);
                         
                         // Draw core mesh.
-                        mpb.SetColor("_TransitionDebugColor", Color.white);
+                        mpb.SetColor(ShaderIDs.TransitionDebugColor, Color.white);
                         DrawMesh(coreMesh, position, material, mpb, camera);
 
                         // Draw transition meshes.
                         if (neighborLOD != 0 && transitionMesh != null)    
                         {
-                            mpb.SetColor("_TransitionDebugColor", Color.red);
+                            if (HighlightTransitionMeshes)
+                                mpb.SetColor(ShaderIDs.TransitionDebugColor, Color.red);
+
                             DrawMesh(transitionMesh, position, material, mpb, camera);
                         }
                     }
@@ -823,15 +826,24 @@ namespace LevelGeneration.Terrain
             public int3 OriginIndex => originIndex;
             public List<Shape> IntersectingShapes => shapes;
 
-            // Order: x, -x, y, -y, z, -z
-            static readonly int3[] NeighbourOffsets =
+            readonly int3[] NeighborOffsets =
             {
-                new(1, 0, 0),
-                new(-1, 0, 0),
-                new(0, 1, 0),
-                new(0, -1, 0),
-                new(0, 0, 1),
-                new(0, 0, -1)
+                new(1, 0, 0),  //  x
+                new(-1, 0, 0), // -x
+                new(0, 1, 0),  //  y
+                new(0, -1, 0), // -y
+                new(0, 0, 1),  //  z
+                new(0, 0, -1)  // -z
+            };
+
+            readonly Color[] DebugColors = new Color[]
+            {
+                new(1.0f, 0.2f, 0.0f, 1.0f),
+                new(0.0f, 1.0f, 0.2f, 0.8f),
+                new(0.2f, 0.0f, 1.0f, 0.6f),
+                new(0.8f, 0.8f, 0.8f, 0.4f),
+                new(0.4f, 0.4f, 0.4f, 0.2f),
+                new(0.1f, 0.1f, 0.1f, 0.1f)
             };
 
             public Brickmap(int brickmapSize, int brickSize, int levelIndex, float worldScale)
@@ -941,6 +953,8 @@ namespace LevelGeneration.Terrain
             {
                 Stopwatch.Start(ref renderTime);
 
+                mpb.SetColor(ShaderIDs.ClipmapDebugColor, HighlightBrickmapLevels ? DebugColors[levelIndex] : Color.white);
+
                 foreach (Brick brick in bricks.Values)
                     brick.Render(renderCamera, material, mpb);
 
@@ -1015,7 +1029,7 @@ namespace LevelGeneration.Terrain
 
                 for (int i = 0; i < 6; i++)
                 {
-                    if (BrickOverlapsPreviousLevel(brickIndex + NeighbourOffsets[i]))
+                    if (BrickOverlapsPreviousLevel(brickIndex + NeighborOffsets[i]))
                         neighborLOD |= (byte)(1 << i);
                 }
 
