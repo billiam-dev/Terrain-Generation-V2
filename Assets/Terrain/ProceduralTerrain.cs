@@ -103,7 +103,7 @@ namespace LevelGeneration.Terrain
         const float k_WorldScale = 1.0f;      // The size of a single cell in world units, effectively controls the scale of the whole terrain.
         const int k_BrickSize = 16;           // The number of cells per axis contained in a single brick.
         const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
-        const int k_NumBrickmapLevels = 2;    // The number of brickmap levels, each doubling the grid size of the previous level.
+        const int k_NumBrickmapLevels = 3;    // The number of brickmap levels, each doubling the grid size of the previous level.
 
         void OnEnable()
         {
@@ -625,6 +625,7 @@ namespace LevelGeneration.Terrain
                 bool isUniformState;                // Whether this brick's density cache is uniform (all > 0 or all < 0).
                 bool densityModified;               // Flag to signal the density field underlying this brick has been modified.
                 byte neighborLOD;                   // The packed LOD information of this brick.
+                bool transitionUpdateQueued;
 
                 public Brick(int3 index, int size, int levelScale, float worldScale)
                 {
@@ -655,22 +656,34 @@ namespace LevelGeneration.Terrain
                         renderer.Dispose();
                 }
 
-                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene, byte neighborLOD)
+                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene, bool queueTransitionUpdate, byte neighborLOD)
                 {
-                    // Update packed neighbor LOD data.
-                    this.neighborLOD = neighborLOD;
-
                     // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
                         return;
 
+                    // Update packed neighbor LOD data.
+                    if (levelScale > 1)
+                    {
+                        if (queueTransitionUpdate || this.neighborLOD != neighborLOD)
+                        {
+                            this.neighborLOD = neighborLOD;
+                            transitionUpdateQueued = true;
+                        }
+                    }
+
+                    // Allocate a density sampler in advance for core or transition density JOBs.
+                    if (densityModified || transitionUpdateQueued)
+                    {
+                        // TODO: possibly run FindIntersectingShapes(shapes) as JOBs in parallel, this is quite slow.
+                        densitySampler.Allocate(FindIntersectingShapes(shapes), scene.Surface, scene.GlobalNoise, Allocator.TempJob);
+                    }
+
+                    //
+                    // Evaluate core.
+                    //
                     if (densityModified)
                     {
-                        // Allocate a density sampler.
-                        // TODO: possibly run FindIntersectingShapes(shapes) as JOBs in parallel, this is quite slow.
-
-                        densitySampler.Allocate(FindIntersectingShapes(shapes), scene.Surface, scene.GlobalNoise, Allocator.TempJob);
-
                         /* 
                          * Special case for bricks with large distances:
                          * 
@@ -725,9 +738,17 @@ namespace LevelGeneration.Terrain
                             isUniformState = result.isUniformState;
                         }
 
-                        // Evaluate transitions.
-                        // TODO: also evaluate when brickmap origin changes.
-                        if (!isUniformState && levelScale > 1)
+                        // Disable densityModified flag.
+                        densityModified = false;
+                    }
+
+                    //
+                    // Evaluate transitions.
+                    //
+                    if (transitionUpdateQueued)
+                    {
+                        // Skip evaluating transition for this brick if it is of uniform state.
+                        if (!isUniformState)
                         {
                             for (int i = 0; i < 6; i++)
                             {
@@ -739,18 +760,18 @@ namespace LevelGeneration.Terrain
 
                                     // Remesh transition mesh with selected transition index.
                                     renderer.RemeshTransition(index, size, levelScale, worldScale, densityCache.TransitionDensityPointer, i);
-                                    
+
                                     break;
                                 }
                             }
                         }
 
-                        // Dispose density sampler.
-                        densitySampler.Dispose();
-
-                        // Disable densityModified flag.
-                        densityModified = false;
+                        transitionUpdateQueued = false;
                     }
+
+                    // Dispose density sampler.
+                    if (densitySampler.IsAllocated)
+                        densitySampler.Dispose();
                 }
 
                 public void Render(Camera renderCamera, Material material, MaterialPropertyBlock mpb)
@@ -941,7 +962,7 @@ namespace LevelGeneration.Terrain
 
                 // Update bricks.
                 foreach (int3 brickIndex in bricks.Keys)
-                    bricks[brickIndex].Update(observerCamera, shapes, scene, PackNeighborLOD(brickIndex));
+                    bricks[brickIndex].Update(observerCamera, shapes, scene, originHasMoved || lowerGridHasMoved, PackNeighborLOD(brickIndex));
 
                 if (isMajorUpdate)
                     Stopwatch.End(ref majorUpdateTime);

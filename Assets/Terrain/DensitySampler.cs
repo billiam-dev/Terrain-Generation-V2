@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace LevelGeneration.Terrain
 {
@@ -28,14 +29,24 @@ namespace LevelGeneration.Terrain
             }
         }
 
-        NativeArray<DistanceFunctionData> m_DistanceFunctions;
-        int m_NumShapesAllocated;
-
         NoiseSettings m_SurfaceSettings;
         NoiseSettings m_GlobalNoiseSettings;
 
+        NativeArray<DistanceFunctionData> m_DistanceFunctions;
+        int m_NumShapesAllocated;
+
+        bool m_IsAllocated;
+
+        public readonly bool IsAllocated => m_IsAllocated;
+
         public void Allocate(List<Shape> shapes, NoiseSettings surface, NoiseSettings globalNoise, Allocator allocator)
         {
+            if (m_IsAllocated)
+            {
+                Debug.LogWarning("Could not allocate density sampler, already allocated!");
+                return;
+            }
+
             m_NumShapesAllocated = shapes.Count;
             m_DistanceFunctions = new(m_NumShapesAllocated, allocator);
 
@@ -52,11 +63,20 @@ namespace LevelGeneration.Terrain
                     shapes[i].blendMode == BlendMode.Subtractive
                 );
             }
+
+            m_IsAllocated = true;
         }
 
         public void Dispose()
         {
+            if (!m_IsAllocated)
+            {
+                Debug.LogWarning("Could not dispose density sampler, already disposed!");
+                return;
+            }
+
             m_DistanceFunctions.Dispose();
+            m_IsAllocated = false;
         }
 
         /* 
