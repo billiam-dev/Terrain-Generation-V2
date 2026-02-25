@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System;
 using Unity.Mathematics;
+using UnityEditor;
 using UnityEngine;
 
 namespace LevelGeneration.Terrain.Tests
@@ -26,6 +27,7 @@ namespace LevelGeneration.Terrain.Tests
         void OnDrawGizmos()
         {
             Gizmos.matrix = transform.localToWorldMatrix;
+            Handles.matrix = transform.localToWorldMatrix;
 
             // Create level scale from the level index with (2 ^ levelScale).
             // Bitshifting is used to fufill the above equation.
@@ -86,6 +88,8 @@ namespace LevelGeneration.Terrain.Tests
 
                 int3 localCellCoord = FaceToCellIndex(faceCoord);
                 int3 globalCellCoord = localCellCoord * (levelScale / 2);
+
+                //Handles.Label(globalCellCoord + new float3(0, 0.1f * levelScale, 0.0f), string.Format("{0} ({1}, {2}, {3})", i, x, y, z));
 
                 Gizmos.color = TransitionCellColor;
                 Gizmos.DrawSphere((float3)globalCellCoord, levelScale * 0.05f);

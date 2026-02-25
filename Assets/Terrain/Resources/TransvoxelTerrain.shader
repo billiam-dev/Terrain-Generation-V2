@@ -129,6 +129,8 @@ Shader "Terrain"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                //return half4(IN.normalWS, 1.0h);
+
                 // Compute materials.
                 half4 surfaceColor = ComputeTriplanarTexture(_SurfaceMetallicAlbedo, sampler_SurfaceMetallicAlbedo, _SurfaceMetallicAlbedo_ST, IN.positionWS, IN.normalWS);
                 half4 surfaceNormal = ComputeTriplanarTexture(_SurfaceNormal, sampler_SurfaceNormal, _SurfaceNormal_ST, IN.positionWS, IN.normalWS);

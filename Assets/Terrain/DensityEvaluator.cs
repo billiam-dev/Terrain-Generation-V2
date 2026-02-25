@@ -102,8 +102,7 @@ namespace LevelGeneration.Terrain
 
         // Note: [FloatMode = FloatMode.Fast] is potentially sketchy for these Jobs.
 
-        //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-        [BurstCompile]
+        [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct DensityJob : IJobFor
         {
             [ReadOnly] public DensitySampler densitySampler;
@@ -157,8 +156,7 @@ namespace LevelGeneration.Terrain
             }
         }
 
-        //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-        [BurstCompile]
+        [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
         struct TransitionDensityJob : IJobFor
         {
             [ReadOnly] public DensitySampler densitySampler;

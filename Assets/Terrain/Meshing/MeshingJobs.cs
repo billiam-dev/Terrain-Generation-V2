@@ -16,8 +16,7 @@ namespace LevelGeneration.Terrain.Meshing
 
     #region JOBs
 
-    //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    [BurstCompile]
+    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct CoreMeshingJob : IJob
     {
         // Input terrain data
@@ -203,8 +202,7 @@ namespace LevelGeneration.Terrain.Meshing
         }
     }
 
-    //[BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    [BurstCompile]
+    [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
     public struct TransitionMeshingJob : IJob
     {
         // Input terrain data
@@ -294,15 +292,18 @@ namespace LevelGeneration.Terrain.Meshing
 
             bool reverseWinding = (cellClass & 0x80) > 0;
 
-            for (int i = 0; i < triangleCount; i++)
+            if (reverseWinding)
             {
-                if (reverseWinding)
+                for (int i = 0; i < triangleCount; i++)
                 {
                     indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 3]]);
                     indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 2]]);
                     indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 1]]);
                 }
-                else
+            }
+            else
+            {
+                for (int i = 0; i < triangleCount; i++)
                 {
                     indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 1]]);
                     indices.Add(cellIndices[TransvoxelTables.TransitionCellData[cellDataIdx][i * 3 + 2]]);
@@ -816,13 +817,6 @@ namespace LevelGeneration.Terrain.Meshing
 
     readonly struct TransvoxelTables
     {
-        public static readonly int3[] Axis =
-        {
-            new(1, 0, 0),
-            new(0, 1, 0),
-            new(0, 0, 1)
-        };
-
         public static readonly int3[] CornerOffsets =
         {
             new(0, 0, 0), // 0         6-------7
@@ -833,6 +827,13 @@ namespace LevelGeneration.Terrain.Meshing
             new(1, 0, 1), // 5      | /     | /   y z
             new(0, 1, 1), // 6 	    |/      |/    |/
             new(1, 1, 1)  // 7 	    0-------1     o--x
+        };
+
+        public static readonly int3[] Axis =
+        {
+            new(1, 0, 0),
+            new(0, 1, 0),
+            new(0, 0, 1)
         };
 
         // The RegularCellClass table maps an 8-bit regular Marching Cubes case index to an equivalence class index.
@@ -1141,16 +1142,6 @@ namespace LevelGeneration.Terrain.Meshing
             new ushort[] {}
         };
 
-        public static readonly int3[][] TransitionAxis =
-        {
-            new int3[] { new(0, 0, 2), new(2, 0, 0), new(0, 2, 0) }, //  x
-            new int3[] { new(0, 0, 2), new(2, 0, 0), new(0, 2, 0) }, // -x
-            new int3[] { new(0, 2, 0), new(0, 0, 2), new(2, 0, 0) }, //  y
-            new int3[] { new(0, 2, 0), new(0, 0, 2), new(2, 0, 0) }, // -y
-            new int3[] { new(2, 0, 0), new(0, 2, 0), new(0, 0, 2) }, //  z
-            new int3[] { new(2, 0, 0), new(0, 2, 0), new(0, 0, 2) }  // -z
-        };
-
         public static readonly int3[] TransitionCornerOffsets =
         {
             new(0, 0, 0), // 0	        C-----------D
@@ -1159,7 +1150,7 @@ namespace LevelGeneration.Terrain.Meshing
 		    new(0, 1, 0), // 3       /  |        /  |
 		    new(1, 1, 0), // 4      6-----7-----8   |	   Corners
 		    new(2, 1, 0), // 5      |   | |     |   |
-		    new(0, 2, 0), // 6      |   A |-----|-- B      y z
+		    new(0, 2, 0), // 6      |   A-|-----|---B      y z
 		    new(1, 2, 0), // 7      3-----4-----5  /       |/
 		    new(2, 2, 0), // 8      | /   |     | /        o--x
 		    new(0, 0, 2), // A      |/    |     |/
@@ -1167,6 +1158,18 @@ namespace LevelGeneration.Terrain.Meshing
 		    new(0, 2, 2), // C
 		    new(2, 2, 2)  // D
 	    };
+
+        public static readonly int3[][] TransitionAxis =
+        {
+            new int3[] { new(0, 0, -2), new(0, 2, 0), new(2, 0, 0) }, //  x
+            new int3[] { new(0, 0, 2), new(2, 0, 0), new(0, 2, 0) },  // -x
+            new int3[] { new(2, 0, 0), new(0, 0, -2), new(0, 2, 0) }, // y
+            new int3[] { new(0, 2, 0), new(0, 0, 2), new(2, 0, 0) },  // -y
+            new int3[] { new(0, 2, 0), new(2, 0, 0), new(0, 0, -2) }, //  z
+            new int3[] { new(2, 0, 0), new(0, 2, 0), new(0, 0, 2) }   // -z
+        };
+
+        // ^ Note: for positive axis, z is negated and other axis are rotated along z by 90 degrees.
 
         // The TransitionCellClass table maps a 9-bit transition cell case index to an equivalence
         // class index. Even though there are 73 equivalence classes in the Transvoxel Algorithm,
@@ -1272,12 +1275,6 @@ namespace LevelGeneration.Terrain.Meshing
             new byte[] {0xA8, 0, 1, 5, 1, 4, 5, 1, 2, 4, 2, 3, 4, 3, 6, 7, 3, 7, 4, 0, 8, 9, 0, 5, 8},
             new byte[] {0xA8, 0, 1, 5, 1, 4, 5, 1, 2, 4, 2, 3, 4, 2, 6, 3, 3, 6, 7, 0, 8, 9, 0, 5, 8}
         };
-
-        // The TransitionCornerData table contains the transition cell corner reuse data shown in Figure 4.18.
-        //public static readonly byte[] TransitionCornerData = new byte[13]
-        //{
-        //    0x30, 0x21, 0x20, 0x12, 0x40, 0x82, 0x10, 0x81, 0x80, 0x37, 0x27, 0x17, 0x87
-        //};
 
         // The TransitionVertexData table gives the vertex locations for every one of the 512 possible
         // cases in the Tranvoxel Algorithm. Each 16-bit value also provides information about whether
@@ -1799,6 +1796,12 @@ namespace LevelGeneration.Terrain.Meshing
             new ushort[] {0x2301, 0x1503, 0x199B, 0x289A},
             new ushort[] {}
         };
+
+        // The TransitionCornerData table contains the transition cell corner reuse data shown in Figure 4.18.
+        //public static readonly byte[] TransitionCornerData = new byte[13]
+        //{
+        //    0x30, 0x21, 0x20, 0x12, 0x40, 0x82, 0x10, 0x81, 0x80, 0x37, 0x27, 0x17, 0x87
+        //};
     }
 
     #endregion
