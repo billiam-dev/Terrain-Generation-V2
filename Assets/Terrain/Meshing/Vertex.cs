@@ -10,9 +10,9 @@ namespace LevelGeneration.Terrain.Meshing
         public float3 position;
         public float3 normal;
         public float3 secondaryPosition; // Padded position to make room for transition cells.
-        public int edgeMask; // TODO: convert to byte to save some memory usage.
+        public ushort edgeMask;          // Vertex edge mask, use in combination with neighbor LOD data to select secondaty positions.
 
-        public Vertex(float3 position, float3 secondaryPosition, float3 normal, int edgeMask)
+        public Vertex(float3 position, float3 secondaryPosition, float3 normal, ushort edgeMask)
         {
             this.position = position;
             this.normal = normal;
@@ -24,8 +24,8 @@ namespace LevelGeneration.Terrain.Meshing
         {
             new(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
             new(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
-            new(VertexAttribute.Tangent, VertexAttributeFormat.Float32, 3),  // Used to store secondary positions.
-            new(VertexAttribute.Color, VertexAttributeFormat.UInt32, 1)      // Used to store edge index of regular cells so the shader knows which cells to check against the packed LOD data.
+            new(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 3),  // Secondary position.
+            new(VertexAttribute.TexCoord1, VertexAttributeFormat.UInt32, 1)    // Edge mask.
         };
     }
 }

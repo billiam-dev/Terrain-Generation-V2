@@ -33,8 +33,8 @@ Shader "Terrain Example"
             {
                 float4 positionOS  : POSITION;
                 float4 normalOS    : NORMAL;
-                float4 sPositionOS : TANGENT;   // Secondary positions, padded to make room for transition cells.
-                uint edgeMask       : COLOR;    // Edge mask, combied with packed LOD data to determine whether to use secondary positions.
+                float4 sPositionOS : TEXCOORD0;   // Padded position to make room for transition cells.
+                uint edgeMask      : TEXCOORD1;   // Vertex edge mask, use in combination with neighbor LOD data to select secondaty positions.
             };
 
             struct Varyings

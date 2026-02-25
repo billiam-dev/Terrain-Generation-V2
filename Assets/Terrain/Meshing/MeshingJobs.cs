@@ -170,14 +170,13 @@ namespace LevelGeneration.Terrain.Meshing
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
                 secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize), normal);
-                //secondaryPos += MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize);
 
             // Add vertex and return its index.
             vertices.Add(new Vertex(
                 MeshingHelpers.TransformPosition(primaryPos, chunkSize, levelScale, worldScale),
                 MeshingHelpers.TransformPosition(secondaryPos, chunkSize, levelScale, worldScale),
                 normal,
-                edgeMask));
+                (ushort)edgeMask));
 
             return (ushort)(vertices.Length - 1);
         }
@@ -349,14 +348,13 @@ namespace LevelGeneration.Terrain.Meshing
             float3 secondaryPos = primaryPos;
             if (edgeMask > 0)
                 secondaryPos = MeshingHelpers.ReprojectPointWithNormal(primaryPos, MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize), normal);
-                //secondaryPos += MeshingHelpers.GetTransitionDelta(edgeMask, primaryPos, chunkSize);
 
             // Add vertex and return its index.
             vertices.Add(new Vertex(
                 MeshingHelpers.TransformPosition(primaryPos, chunkSize, levelScale, worldScale),
                 MeshingHelpers.TransformPosition(secondaryPos, chunkSize, levelScale, worldScale),
                 normal,
-                edgeMask));
+                (ushort)edgeMask));
 
             return (ushort)(vertices.Length - 1);
         }
@@ -437,7 +435,7 @@ namespace LevelGeneration.Terrain.Meshing
         /// <summary>
         /// How much of a full cell is shifted to make room for transition cells.
         /// </summary>
-        const float k_TransitionCellPadding = 0.5f; // TODO: 0.25 prolly
+        const float k_TransitionCellPadding = 0.2f;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int GetEdgeMask(int3 i0, int3 i1, int min, int max)
