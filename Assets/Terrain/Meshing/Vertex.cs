@@ -27,5 +27,7 @@ namespace LevelGeneration.Terrain.Meshing
             new(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 3),  // Secondary position.
             new(VertexAttribute.TexCoord1, VertexAttributeFormat.UInt32, 1)    // Edge mask.
         };
+
+        public static readonly int Size = Marshal.SizeOf(typeof(Vertex));
     }
 }

@@ -120,9 +120,9 @@ namespace LevelGeneration.Terrain
             }
 
             EditorGUILayout.PropertyField(m_Material, m_MaterialGUI);
+            EditorGUILayout.PropertyField(m_UseStaticOrigin, m_UseStaticOriginGUI);
 
             EditorGUILayout.LabelField("Debug Options", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(m_UseStaticOrigin, m_UseStaticOriginGUI);
 
             EditorGUI.BeginChangeCheck();
             bool highlightBrickmapLevels = EditorGUILayout.Toggle("Highlight Brickmap Levels", ProceduralTerrain.HighlightBrickmapLevels);

@@ -80,36 +80,48 @@ namespace LevelGeneration.Terrain
             set;
         }
 
+        static ProceduralTerrain s_Instance;
+
         SDFScene m_Scene;
         Brickmap[] m_BrickmapLevels;
         MaterialPropertyBlock m_MaterialProperties;
-        
+
+        DensityEvaluator m_DensityEvaluator;
+        BatchChunkMesher m_Mesher;
+
         bool m_Initialized;
 
-        // TODO: try to remove these crappy statics.
-
-        static DensityEvaluator s_DensityEvaluator;
-        static BatchChunkMesher s_Mesher;
-
-        static MeanTime s_AvgDensityEvalTime;
-        static MeanTime s_AvgMeshingTime;
-        static uint s_DrawingVertices;
-        static uint s_DrawingIndices;
+        // Debug info
+        MeanTime m_AvgDensityEvalTime;
+        MeanTime m_AvgMeshingTime;
+        uint m_DrawingVertices;
+        uint m_DrawingIndices;
         double m_TotalMeshingTime;
         int m_TotalMeshingTasks;
         double m_UpdateTime;
         double m_RenderTime;
 
-        const float k_WorldScale = 1.0f;      // The size of a single cell in world units, effectively controls the scale of the whole terrain.
+        const float k_WorldScale = 1.0f;      // The size of a single cell in world units, effectively controls the scale of the whole terrain. TODO: this is broken now?
         const int k_BrickSize = 16;           // The number of cells per axis contained in a single brick.
         const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
-        const int k_NumBrickmapLevels = 3;    // The number of brickmap levels, each doubling the grid size of the previous level.
+        const int k_NumBrickmapLevels = 5;    // The number of brickmap levels, each doubling the grid size of the previous level.
 
         void OnEnable()
         {
-            Initialize();
-            RenderPipelineManager.beginCameraRendering += RenderTerrain;
+            if (s_Instance != null)
+            {
+                Debug.LogWarning($"Could not initialize {name}, only one ProceduralTerrain may exist in the scene.");
+                return;
+            }
 
+            s_Instance = this;
+
+            if (m_Initialized)
+                return;
+
+            Initialize();
+
+            RenderPipelineManager.beginCameraRendering += RenderTerrain;
 #if UNITY_EDITOR
             EditorApplication.update += UpdateTerrain;
 #endif
@@ -117,8 +129,12 @@ namespace LevelGeneration.Terrain
 
         void OnDisable()
         {
-            RenderPipelineManager.beginCameraRendering -= RenderTerrain;
+            if (!m_Initialized)
+                return;
 
+            s_Instance = null;
+
+            RenderPipelineManager.beginCameraRendering -= RenderTerrain;
 #if UNITY_EDITOR
             EditorApplication.update -= UpdateTerrain;
 #endif
@@ -151,21 +167,18 @@ namespace LevelGeneration.Terrain
 
         public void Initialize()
         {
-            if (m_Initialized)
-                return;
-
             m_Scene = new();
             m_BrickmapLevels = new Brickmap[k_NumBrickmapLevels];
             m_MaterialProperties = new();
 
-            s_DensityEvaluator = new();
-            s_Mesher = new();
+            m_DensityEvaluator = new();
+            m_Mesher = new();
 
-            s_AvgDensityEvalTime = new();
-            s_AvgMeshingTime = new();
+            m_AvgDensityEvalTime = new();
+            m_AvgMeshingTime = new();
 
-            s_DensityEvaluator.Allocate(k_BrickSize);
-            s_Mesher.Allocate();
+            m_DensityEvaluator.Allocate(k_BrickSize);
+            m_Mesher.Allocate();
 
             if (EnableSurface)
                 m_Scene.SetSurfaceSettings(new NoiseSettings(new float3(0, SurfaceYPosition, 0), SurfaceNoiseAmplitude, SurfaceNoiseFrequency, GlobalNoiseSeed));
@@ -185,24 +198,21 @@ namespace LevelGeneration.Terrain
 
         public void Dispose()
         {
-            if (!m_Initialized)
-                return;
-
             foreach (Brickmap brickmap in m_BrickmapLevels)
                 brickmap.Dispose();
 
-            s_DensityEvaluator.Dispose();
-            s_Mesher.Dispose();
+            m_DensityEvaluator.Dispose();
+            m_Mesher.Dispose();
 
             m_Scene = null;
             m_BrickmapLevels = null;
             m_MaterialProperties = null;
 
-            s_DensityEvaluator = null;
-            s_Mesher = null;
+            m_DensityEvaluator = null;
+            m_Mesher = null;
 
-            s_AvgDensityEvalTime = null;
-            s_AvgMeshingTime = null;
+            m_AvgDensityEvalTime = null;
+            m_AvgMeshingTime = null;
 
             m_Initialized = false;
         }
@@ -228,17 +238,17 @@ namespace LevelGeneration.Terrain
                 m_BrickmapLevels[i].Update(camera, observerPosition, m_BrickmapLevels[i - 1].OriginIndex, m_Scene);
 
             // Execute meshing tasks queued this frame.
-            int pendingTasks = s_Mesher.NumPendingTasks;
+            int pendingTasks = m_Mesher.NumPendingTasks;
             if (pendingTasks > 0)
             {
                 m_TotalMeshingTasks = pendingTasks;
 
                 Stopwatch.Start(ref m_TotalMeshingTime);
 
-                s_Mesher.ExecutePendingTasksContinuous();
+                m_Mesher.ExecutePendingTasksContinuous();
 
                 Stopwatch.End(ref m_TotalMeshingTime);
-                s_AvgMeshingTime.AddTime(m_TotalMeshingTime / m_TotalMeshingTasks);
+                m_AvgMeshingTime.AddTime(m_TotalMeshingTime / m_TotalMeshingTasks);
             }
 
             // Disable scene changed flag.
@@ -249,25 +259,13 @@ namespace LevelGeneration.Terrain
 
         void RenderTerrain(ScriptableRenderContext context, Camera camera)
         {
-            s_DrawingVertices = 0;
-            s_DrawingIndices = 0;
+            m_DrawingVertices = 0;
+            m_DrawingIndices = 0;
 
             Stopwatch.Start(ref m_RenderTime);
 
-            // TODO
-            //CommandBuffer commandBuffer = CommandBufferPool.Get("Terrain CMD");
-
             for (int i = 0; i < k_NumBrickmapLevels; i++)
                 m_BrickmapLevels[i].Render(camera, Material, m_MaterialProperties);
-            
-            //cmd.DrawMultipleMeshes();
-
-            /*
-            context.ExecuteCommandBuffer(commandBuffer);
-            context.Submit();
-            commandBuffer.Clear();
-            CommandBufferPool.Release(commandBuffer);
-            */
 
             Stopwatch.End(ref m_RenderTime);
         }
@@ -491,8 +489,11 @@ namespace LevelGeneration.Terrain
 
                     public void Dispose()
                     {
-                        coreDensity.Dispose();
-                        transitionDensity.Dispose();
+                        if (coreDensity.IsCreated)
+                            coreDensity.Dispose();
+
+                        if (transitionDensity.IsCreated)
+                            transitionDensity.Dispose();
 
                         isAllocated = false;
                     }
@@ -514,6 +515,27 @@ namespace LevelGeneration.Terrain
                         int extendedSize = size + 3;
                         return coreDensity[(index.z * extendedSize * extendedSize) + (index.y * extendedSize) + index.x];
                     }
+
+                    public int MemoryUsageBytes()
+                    {
+                        int bytes = 0;
+
+                        // Core density
+                        if (coreDensity.IsCreated)
+                            bytes += coreDensity.Length * sizeof(float);
+
+                        // Transition density
+                        if (transitionDensity.IsCreated)
+                            bytes += transitionDensity.Length * sizeof(float);
+
+                        // Density pointers
+                        bytes += IntPtr.Size * 2;
+
+                        // isAllocated bool
+                        bytes += 1;
+
+                        return bytes;
+                    }
                 }
 
                 class BrickRenderer : IDisposable
@@ -527,13 +549,16 @@ namespace LevelGeneration.Terrain
 
                     public void Allocate(float worldSize, bool allocateTransition)
                     {
+                        // Create mesh bounds (local).
                         Bounds bounds = new(Vector3.zero, Vector3.one * worldSize);
 
+                        // Allocate core mesh.
                         coreMesh = new()
                         {
                             bounds = bounds
                         };
 
+                        // Allocate transition mesh.
                         if (allocateTransition)
                         {
                             transitionMesh = new()
@@ -558,7 +583,7 @@ namespace LevelGeneration.Terrain
 
                     public void RemeshCore(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr)
                     {
-                        s_Mesher.QueueRemeshTask(new MeshingTask(
+                        s_Instance.m_Mesher.QueueRemeshTask(new MeshingTask(
                             coreMesh,
                             index,
                             size,
@@ -570,7 +595,7 @@ namespace LevelGeneration.Terrain
 
                     public void RemeshTransition(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr, int transitionIndex)
                     {
-                        s_Mesher.QueueRemeshTask(new MeshingTask(
+                        s_Instance.m_Mesher.QueueRemeshTask(new MeshingTask(
                             transitionMesh,
                             index,
                             size,
@@ -602,10 +627,37 @@ namespace LevelGeneration.Terrain
 
                     void DrawMesh(Mesh mesh, float3 position, Material material, MaterialPropertyBlock mpb, Camera camera)
                     {
-                        Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb); // TODO: Graphics.DrawMesh might be bad performance. Command buffers may be better.
+                        // TODO: Graphics.DrawMesh is prolly bad performance.
+                        // Just use a MeshRenderer, GameObjects will be needed for MeshColliders anyway.
 
-                        s_DrawingVertices += (uint)mesh.vertexCount;
-                        s_DrawingIndices += mesh.GetIndexCount(0);
+                        Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb);
+
+                        s_Instance.m_DrawingVertices += (uint)mesh.vertexCount;
+                        s_Instance.m_DrawingIndices += mesh.GetIndexCount(0);
+                    }
+
+                    public int MemoryUsageBytes()
+                    {
+                        int bytes = 0;
+
+                        // Core mesh
+                        if (coreMesh != null)
+                        {
+                            bytes += coreMesh.vertexCount * Vertex.Size;
+                            bytes += (int)coreMesh.GetIndexCount(0) * 2; // Index format is UInt16; 16 bits or 2 bytes.
+                        }
+
+                        // Transition mesh
+                        if (transitionMesh != null)
+                        {
+                            bytes += transitionMesh.vertexCount * Vertex.Size;
+                            bytes += (int)transitionMesh.GetIndexCount(0) * 2;
+                        }
+
+                        // isAllocated bool
+                        bytes += 1;
+
+                        return bytes;
                     }
                 }
 
@@ -624,8 +676,8 @@ namespace LevelGeneration.Terrain
 
                 bool isUniformState;                // Whether this brick's density cache is uniform (all > 0 or all < 0).
                 bool densityModified;               // Flag to signal the density field underlying this brick has been modified.
+                bool transitionUpdateQueued;        // Whether the tranision mesh needs to be updated next time this brick is selected for rendering.
                 byte neighborLOD;                   // The packed LOD information of this brick.
-                bool transitionUpdateQueued;
 
                 public Brick(int3 index, int size, int levelScale, float worldScale)
                 {
@@ -708,9 +760,9 @@ namespace LevelGeneration.Terrain
                             // Evaluate the core density function.
                             double t = 0.0;
                             Stopwatch.Start(ref t);
-                            DensityEvaluationResult result = s_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
+                            DensityEvaluationResult result = s_Instance.m_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
                             Stopwatch.End(ref t);
-                            s_AvgDensityEvalTime.AddTime(t);
+                            s_Instance.m_AvgDensityEvalTime.AddTime(t);
 
                             // If the result is not uniform, continue to recompute the mesh.
                             // Else, if this brick is not already uniform, ensure it is disposed.
@@ -755,7 +807,7 @@ namespace LevelGeneration.Terrain
                                 if ((neighborLOD & (1 << i)) != 0)
                                 {
                                     // Evaluate transition density with selected transition index and copy the result.
-                                    DensityEvaluationResult result = s_DensityEvaluator.ComputeTransition(densitySampler, index, size, levelScale, worldScale, i);
+                                    DensityEvaluationResult result = s_Instance.m_DensityEvaluator.ComputeTransition(densitySampler, index, size, levelScale, worldScale, i);
                                     densityCache.CopyTransitionDensity(result.density);
 
                                     // Remesh transition mesh with selected transition index.
@@ -821,6 +873,31 @@ namespace LevelGeneration.Terrain
                 public float SampleCache(int3 index) => densityCache.Sample(index, size);
 
                 public bool IntersectingSurface => !isUniformState;
+
+                public int MemoryUsageBytes()
+                {
+                    int bytes = 0;
+
+                    bytes += sizeof(int) * 3;   // index
+                    bytes += sizeof(int);       // size
+                    bytes += sizeof(int);       // levelScale
+
+                    bytes += sizeof(float) * 3; // worldPosition
+                    bytes += sizeof(float);     // worldSize
+                    bytes += sizeof(float);     // worldScale
+
+                    bytes += densityCache.MemoryUsageBytes(); // densityCache
+                    bytes += renderer.MemoryUsageBytes();     // renderer
+
+                    // TODO: densitySampler
+
+                    bytes += sizeof(bool);      // isUniformState
+                    bytes += sizeof(bool);      // densityModified
+                    bytes += sizeof(bool);      // transitionUpdateQueued
+                    bytes += sizeof(byte);      // neighborLOD
+
+                    return bytes;
+                }
             }
 
             readonly int brickmapSize;         // Number of bricks per axis contained in this brick map.
@@ -832,7 +909,7 @@ namespace LevelGeneration.Terrain
             readonly int quarterBrickmapSize;  // One fourth the number of bricks per axis contained in this brick map.
             readonly int levelScale;           // The scale multiplier relative to the smallest brickmap level, derrived from the level index with the equation (2 ^ level).
 
-            readonly Dictionary<int3, Brick> bricks; // TODO: indirection ptr map?
+            readonly Dictionary<int3, Brick> bricks; // Note: the memory usage of a dictionary only grows if the Count exceeds its initialized size. An indirection / ptr system may be better, but it risks lots of effort for a marginal reward.
             readonly List<Shape> shapes;
 
             int3 originIndex;                  // The global brick index in which this map currently originates.
@@ -845,7 +922,8 @@ namespace LevelGeneration.Terrain
             double renderTime;
 
             public int3 OriginIndex => originIndex;
-            public List<Shape> IntersectingShapes => shapes;
+
+            public List<Shape> IntersectingShapes => shapes; // TODO: only check intersection against previous brickmap level shapes.
 
             readonly int3[] NeighborOffsets =
             {
@@ -885,8 +963,8 @@ namespace LevelGeneration.Terrain
                 originIndex = int.MaxValue;
                 lowerGridOffset = 0;
 
-                s_AvgDensityEvalTime = new();
-                s_AvgMeshingTime = new();
+                s_Instance.m_AvgDensityEvalTime = new();
+                s_Instance.m_AvgMeshingTime = new();
             }
 
             public void Dispose()
@@ -1044,19 +1122,6 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            byte PackNeighborLOD(int3 brickIndex)
-            {
-                byte neighborLOD = 0;
-
-                for (int i = 0; i < 6; i++)
-                {
-                    if (BrickOverlapsPreviousLevel(brickIndex + NeighborOffsets[i]))
-                        neighborLOD |= (byte)(1 << i);
-                }
-
-                return neighborLOD;
-            }
-
             int3 GetOriginIndex(float3 observerPosition)
             {
                 // See ClipmapDemo.cs for explanation of this function.
@@ -1107,7 +1172,23 @@ namespace LevelGeneration.Terrain
                 return false;
             }
 
-            public bool BrickIntersectsSurface(int3 brickIndex) => bricks.ContainsKey(brickIndex) && bricks[brickIndex].IntersectingSurface;
+            byte PackNeighborLOD(int3 brickIndex)
+            {
+                byte neighborLOD = 0;
+
+                for (int i = 0; i < 6; i++)
+                {
+                    if (BrickOverlapsPreviousLevel(brickIndex + NeighborOffsets[i]))
+                        neighborLOD |= (byte)(1 << i);
+                }
+
+                return neighborLOD;
+            }
+
+            public bool BrickIntersectsSurface(int3 brickIndex)
+            {
+                return bricks.ContainsKey(brickIndex) && bricks[brickIndex].IntersectingSurface;
+            }
 
             public float SampleCache(int3 brickIndex, int3 cellIndex)
             {
@@ -1115,6 +1196,35 @@ namespace LevelGeneration.Terrain
                     return 32.0f;
 
                 return bricks[brickIndex].SampleCache(cellIndex);
+            }
+
+            public int MemoryUsageBytes()
+            {
+                int bytes = 0;
+
+                bytes += sizeof(int);        // brickmapSize
+                bytes += sizeof(int);        // brickSize
+                bytes += sizeof(int);        // levelIndex
+                bytes += sizeof(float);      // worldScale
+
+                bytes += sizeof(int);        // halfBrickmapSize
+                bytes += sizeof(int);        // quarterBrickmapSize
+                bytes += sizeof(int);        // levelScale
+
+                // bricks
+                foreach (Brick brick in bricks.Values)
+                    bytes += brick.MemoryUsageBytes();
+
+                // TODO: shapes
+
+                bytes += sizeof(int) * 3;    // originIndex
+                bytes += sizeof(int) * 3;    // lowerGridOffset
+
+                bytes += sizeof(double);     // updateTime
+                bytes += sizeof(double);     // majorUpdateTime
+                bytes += sizeof(double);     // renderTime
+
+                return bytes;
             }
         }
 
@@ -1189,16 +1299,8 @@ namespace LevelGeneration.Terrain
             this.seed = seed;
         }
 
-        public NoiseSettings(float amplitude, float frequency, uint seed)
-            : this(0.0f, amplitude, frequency, seed)
-        {
+        public NoiseSettings(float amplitude, float frequency, uint seed) : this(0.0f, amplitude, frequency, seed) { }
 
-        }
-
-        public NoiseSettings(float amplitude, float frequency)
-            : this(0.0f, amplitude, frequency, 0)
-        {
-
-        }
+        public NoiseSettings(float amplitude, float frequency) : this(0.0f, amplitude, frequency, 0) { }
     }
 }

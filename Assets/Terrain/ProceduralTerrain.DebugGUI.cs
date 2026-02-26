@@ -10,9 +10,12 @@ namespace LevelGeneration.Terrain
         {
             Rect rect = new(10.0f, 10.0f, 260.0f, k_SingleLineHeight);
 
-            int bricksPerLevel = k_BrickmapLevelSize * k_BrickmapLevelSize * k_BrickmapLevelSize;
             int extendedBrickSize = k_BrickSize + 3;
             int cellsPerBrick = extendedBrickSize * extendedBrickSize * extendedBrickSize;
+
+            int densityCacheMemory = 0;
+            for (int i = 0; i < k_NumBrickmapLevels; i++)
+                densityCacheMemory += m_BrickmapLevels[i].MemoryUsageBytes();
 
             // Scene info
             GUI.Label(rect, $"Shapes in scene: {m_Scene.NumShapes}");
@@ -25,23 +28,23 @@ namespace LevelGeneration.Terrain
             rect.y += k_SingleLineHeight;
             GUI.Label(rect, $"Num brickmap levels: {k_NumBrickmapLevels}");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Max memory usage: {k_NumBrickmapLevels * bricksPerLevel * cellsPerBrick * sizeof(float) / 1024 / 1024}MB"); // TODO
+            GUI.Label(rect, $"Memory usage: {densityCacheMemory / 1024 / 1024}MB");
             rect.y += k_SingleLineHeight * 2.0f;
 
             // Brickmaps update time
-            GUI.Label(rect, $"Avg density eval time: {Stopwatch.ToMilliseconds(s_AvgDensityEvalTime.Avarage())}ms");
+            GUI.Label(rect, $"Avg density eval time: {Stopwatch.ToMilliseconds(m_AvgDensityEvalTime.Avarage())}ms");
             rect.y += k_SingleLineHeight;
             GUI.Label(rect, $"Completed: {m_TotalMeshingTasks} meshing tasks in {Stopwatch.ToMilliseconds(m_TotalMeshingTime)}ms");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"   (avg: {Stopwatch.ToMilliseconds(s_AvgMeshingTime.Avarage())}ms)");
+            GUI.Label(rect, $"   (avg: {Stopwatch.ToMilliseconds(m_AvgMeshingTime.Avarage())}ms)");
             rect.y += k_SingleLineHeight;
             GUI.Label(rect, $"Total update time: {Stopwatch.ToMilliseconds(m_UpdateTime)}ms");
             rect.y += k_SingleLineHeight * 2.0f;
 
             // Brickmaps rendering time
-            GUI.Label(rect, $"Total vertices: {s_DrawingVertices}");
+            GUI.Label(rect, $"Total vertices: {m_DrawingVertices}");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Total indices: {s_DrawingIndices}");
+            GUI.Label(rect, $"Total indices: {m_DrawingIndices}");
             rect.y += k_SingleLineHeight;
             GUI.Label(rect, $"Total Render time: {Stopwatch.ToMilliseconds(m_RenderTime)}ms");
             rect.y += k_SingleLineHeight * 2.0f;

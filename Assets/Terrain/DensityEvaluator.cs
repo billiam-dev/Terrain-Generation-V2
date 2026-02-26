@@ -202,8 +202,6 @@ namespace LevelGeneration.Terrain
 
                 // Store the new density.
                 density[index] = densitySampler.Sample(worldPosition);
-
-                // ^ TODO: init tranition density with core density values to avoid duplicate computation.
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

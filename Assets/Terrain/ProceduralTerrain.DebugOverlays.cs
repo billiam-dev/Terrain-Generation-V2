@@ -68,6 +68,10 @@ namespace LevelGeneration.Terrain
                     Gizmos.color = color;
                     Gizmos.DrawWireCube(worldPosition, Vector3.one * worldSize);
 
+                    // Draw colored panels on transition faces.
+                    // Un-comment if needed.
+
+                    /*
                     if (levelScale == 1 || densityModified || isUniformState)
                         return;
 
@@ -76,6 +80,7 @@ namespace LevelGeneration.Terrain
                         if ((neighborLOD & (1 << i)) != 0)
                             DrawTransition(i);
                     }
+                    */
                 }
 
                 void DrawTransition(int transitionIndex)
