@@ -12,7 +12,6 @@ namespace LevelGeneration.Terrain
 
         public readonly DistanceFunction distanceFunction;
         public readonly BlendMode blendMode;
-        public readonly float smoothness;
 
         public readonly float3 dimentions;
 
@@ -21,31 +20,30 @@ namespace LevelGeneration.Terrain
         const float k_SmoothnessVolumeExtentConstant = 4.0f;
 
         // Constructors
-        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float3 dimentions)
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float3 dimentions)
         {
             matrix = new(translation, rotation, scale);
             inverseMatrix = math.inverse(matrix);
 
             this.distanceFunction = distanceFunction;
             this.blendMode = blendMode;
-            this.smoothness = smoothness;
             this.dimentions = dimentions;
         }
 
-        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1, float dimention2, float dimention3)
-            : this(translation, rotation, scale, distanceFunction, blendMode, smoothness, new float3(dimention1, dimention2, dimention3))
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float dimention1, float dimention2, float dimention3)
+            : this(translation, rotation, scale, distanceFunction, blendMode, new float3(dimention1, dimention2, dimention3))
         {
 
         }
 
-        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1, float dimention2)
-            : this(translation, rotation, scale, distanceFunction, blendMode, smoothness, new float3(dimention1, dimention2, 0))
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float dimention1, float dimention2)
+            : this(translation, rotation, scale, distanceFunction, blendMode, new float3(dimention1, dimention2, 0))
         {
 
         }
 
-        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float smoothness, float dimention1)
-            : this(translation, rotation, scale, distanceFunction, blendMode, smoothness, new float3(dimention1, 0, 0))
+        public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float dimention1)
+            : this(translation, rotation, scale, distanceFunction, blendMode, new float3(dimention1, 0, 0))
         {
 
         }
@@ -75,7 +73,7 @@ namespace LevelGeneration.Terrain
             }
 
             // Pad the volume to account for the smoothing factor around shapes.
-            boundsVolume += smoothness * k_SmoothnessVolumeExtentConstant;
+            boundsVolume += ProceduralTerrain.Smoothness * k_SmoothnessVolumeExtentConstant;
 
             // Translate the volume by my matrix.
             // Compute all eight corner points

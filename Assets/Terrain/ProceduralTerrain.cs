@@ -6,7 +6,6 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
-using System.Runtime.InteropServices;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -106,6 +105,12 @@ namespace LevelGeneration.Terrain
         const int k_BrickSize = 16;           // The number of cells per axis contained in a single brick.
         const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
         const int k_NumBrickmapLevels = 5;    // The number of brickmap levels, each doubling the grid size of the previous level.
+
+        /// <summary>
+        /// The amount of blending applied between terrain-forming shapes.
+        /// Does not apply to the CSG shapes users apply by mining or building upon the terrain.
+        /// </summary>
+        public const float Smoothness = 6.0f;
 
         void OnEnable()
         {
@@ -376,15 +381,17 @@ namespace LevelGeneration.Terrain
         /// <summary>
         /// Raytraces the terrain to find the surface position.
         /// </summary>
+        /*
         public float3 FindSurface(float3 origin, float3 direction)
         {
-            // TODO
-            // We can use the cached density values to speed this up, if a brick we are visiting is not allocated we can skip it immediatly.
+            // Optional TODO: Fast voxel traversal.
+            // We can use cached density values for this, if a brick we are visiting is not allocated we can skip it immediatly.
 
-            // Pog http://www.cse.yorku.ca/~amana/research/grid.pdf
+            // http://www.cse.yorku.ca/~amana/research/grid.pdf
 
             return 0.0f;
         }
+        */
 
         static void GetBrickVolumeFromAABB(int brickSize, float scale, float3 boundsCentre, float3 boundsVolume, out int3 initialIndex, out int3 volume)
         {
@@ -628,8 +635,7 @@ namespace LevelGeneration.Terrain
 
                     void DrawMesh(Mesh mesh, float3 position, Material material, MaterialPropertyBlock mpb, Camera camera)
                     {
-                        // TODO: Graphics.DrawMesh is prolly bad performance.
-                        // Just use a MeshRenderer, GameObjects will be needed for MeshColliders anyway.
+                        // TODO: When in play mode; use GameObject with MeshRenderer and MeshCollider components.
 
                         Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb);
 

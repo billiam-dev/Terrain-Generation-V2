@@ -18,7 +18,6 @@ namespace LevelGeneration.Terrain.ShapePainter
 
         GUIContent m_DistanceFunctionContent;
         GUIContent m_BlendModeContent;
-        GUIContent m_SmoothnessContent;
 
         PrimitiveBoundsHandle m_BoundsHandle;
 
@@ -35,7 +34,6 @@ namespace LevelGeneration.Terrain.ShapePainter
 
             m_DistanceFunctionContent = new GUIContent("Shape");
             m_BlendModeContent = new GUIContent("Blend Mode");
-            m_SmoothnessContent = new GUIContent("Smoothness");
 
             m_Target = (ShapeBrush)target;
         }
@@ -46,7 +44,6 @@ namespace LevelGeneration.Terrain.ShapePainter
 
             EditorGUILayout.PropertyField(m_DistanceFunction, m_DistanceFunctionContent);
             EditorGUILayout.PropertyField(m_BlendMode, m_BlendModeContent);
-            EditorGUILayout.PropertyField(m_Smoothness, m_SmoothnessContent);
 
             switch ((DistanceFunction)m_DistanceFunction.enumValueIndex)
             {

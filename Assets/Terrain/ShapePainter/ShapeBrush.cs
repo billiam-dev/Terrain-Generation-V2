@@ -39,22 +39,6 @@ namespace LevelGeneration.Terrain.ShapePainter
             }
         }
 
-        public float Smoothness
-        {
-            get
-            {
-                return m_Smoothness;
-            }
-            set
-            {
-                if (value != Smoothness)
-                {
-                    Smoothness = value;
-                    IsDirty = true;
-                }
-            }
-        }
-
         public float Dimention1
         {
             get
@@ -109,9 +93,6 @@ namespace LevelGeneration.Terrain.ShapePainter
         [SerializeField]
         BlendMode m_BlendMode = BlendMode.Additive;
 
-        [SerializeField, Range(0.1f, 10.0f)]
-        float m_Smoothness = 0.2f;
-
         [SerializeField, Min(0.0f)]
         float m_Dimention1 = 4.0f;
 
@@ -143,7 +124,6 @@ namespace LevelGeneration.Terrain.ShapePainter
 
             m_DistanceFunction,
             m_BlendMode,
-            m_Smoothness,
 
             m_Dimention1,
             m_Dimention2,

@@ -165,7 +165,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapeBrush
   m_DistanceFunction: 0
   m_BlendMode: 0
-  m_Smoothness: 1
   m_Dimention1: 12
   m_Dimention2: 0
   m_Dimention3: 0
@@ -758,7 +757,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapeBrush
   m_DistanceFunction: 0
   m_BlendMode: 1
-  m_Smoothness: 1
   m_Dimention1: 12
   m_Dimention2: 0
   m_Dimention3: 0
@@ -957,7 +955,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ShapeBrush
   m_DistanceFunction: 0
   m_BlendMode: 1
-  m_Smoothness: 1
   m_Dimention1: 12
   m_Dimention2: 0
   m_Dimention3: 0

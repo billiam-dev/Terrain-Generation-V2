@@ -16,24 +16,22 @@ namespace LevelGeneration.Terrain
             public readonly AffineTransform inverseMatrix; // 64 bytes
             public readonly float3 dimentions;             // 12 bytes
             public readonly uint functionID;               // 4 bytes
-            public readonly float smoothness;              // 4 bytes
             public readonly float minSign;                 // 4 bytes
 
-            public DistanceFunctionData(AffineTransform inverseMatrix, float3 dimentions, uint functionID, float smoothness, bool isSubtractive)
+            public DistanceFunctionData(AffineTransform inverseMatrix, float3 dimentions, uint functionID, bool isSubtractive)
             {
                 this.inverseMatrix = inverseMatrix;
                 this.dimentions = dimentions;
                 this.functionID = functionID;
-                this.smoothness = smoothness;
                 minSign = isSubtractive ? -1 : 1;
             }
         }
 
-        NoiseSettings m_SurfaceSettings;
-        NoiseSettings m_GlobalNoiseSettings;
-
         NativeArray<DistanceFunctionData> m_DistanceFunctions;
         int m_NumShapesAllocated;
+
+        NoiseSettings m_SurfaceSettings;
+        NoiseSettings m_GlobalNoiseSettings;
 
         bool m_IsAllocated;
 
@@ -59,7 +57,6 @@ namespace LevelGeneration.Terrain
                     shapes[i].inverseMatrix,
                     shapes[i].dimentions,
                     (uint)shapes[i].distanceFunction,
-                    shapes[i].smoothness * 6.0f, // Multiply smoothness by 6 as the first step to the cubic polynomial smooth min / max functions.
                     shapes[i].blendMode == BlendMode.Subtractive
                 );
             }
@@ -113,13 +110,13 @@ namespace LevelGeneration.Terrain
                 };
 
                 // Mix the old and new distance values using smooth min.
-                result = SmoothMin(result * sdf.minSign, distance, sdf.smoothness) * sdf.minSign;
+                result = SmoothMin(result * sdf.minSign, distance, ProceduralTerrain.Smoothness) * sdf.minSign;
             }
 
             // Apply noise.
             result += Noise(worldPosition + m_GlobalNoiseSettings.offset, m_GlobalNoiseSettings.frequency, m_GlobalNoiseSettings.amplitude);
 
-            // Apply post-noise shapes (TODO).
+            // Apply post-noise shapes (CSG) (TODO).
             
             // Note: in this section we ditch the smooth-min for maximum speed.
             // The user can apply many more edits than the world generator, which focuses on minimal large shapes.
