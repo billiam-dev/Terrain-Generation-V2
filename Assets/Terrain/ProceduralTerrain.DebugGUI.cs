@@ -13,9 +13,9 @@ namespace LevelGeneration.Terrain
             int extendedBrickSize = k_BrickSize + 3;
             int cellsPerBrick = extendedBrickSize * extendedBrickSize * extendedBrickSize;
 
-            int densityCacheMemory = 0;
+            int brickmapMemoryUsage = 0;
             for (int i = 0; i < k_NumBrickmapLevels; i++)
-                densityCacheMemory += m_BrickmapLevels[i].MemoryUsageBytes();
+                brickmapMemoryUsage += m_BrickmapLevels[i].MemoryUsageBytes();
 
             // Scene info
             GUI.Label(rect, $"Shapes in scene: {m_Scene.NumShapes}");
@@ -28,7 +28,7 @@ namespace LevelGeneration.Terrain
             rect.y += k_SingleLineHeight;
             GUI.Label(rect, $"Num brickmap levels: {k_NumBrickmapLevels}");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Memory usage: {densityCacheMemory / 1024 / 1024}MB");
+            GUI.Label(rect, $"~Memory usage: {brickmapMemoryUsage / 1024 / 1024}MB");
             rect.y += k_SingleLineHeight * 2.0f;
 
             // Brickmaps update time

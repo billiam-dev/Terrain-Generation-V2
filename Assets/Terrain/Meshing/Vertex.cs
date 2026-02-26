@@ -12,6 +12,8 @@ namespace LevelGeneration.Terrain.Meshing
         public float3 secondaryPosition; // Padded position to make room for transition cells.
         public ushort edgeMask;          // Vertex edge mask, use in combination with neighbor LOD data to select secondaty positions.
 
+        public const int SizeBytes = 40; // Size in bytes of a single vertex.
+
         public Vertex(float3 position, float3 secondaryPosition, float3 normal, ushort edgeMask)
         {
             this.position = position;
@@ -27,7 +29,5 @@ namespace LevelGeneration.Terrain.Meshing
             new(VertexAttribute.TexCoord0, VertexAttributeFormat.Float32, 3),  // Secondary position.
             new(VertexAttribute.TexCoord1, VertexAttributeFormat.UInt32, 1)    // Edge mask.
         };
-
-        public static readonly int Size = Marshal.SizeOf(typeof(Vertex));
     }
 }

@@ -160,6 +160,7 @@ Shader "Terrain Example"
             {
                 //return PackedNeighborData();
                 //return EdgeMask(IN.edgeMask);
+                //return half4(IN.normalWS, 1.0h);
 
                 // Compute albedo color.
                 half4 color = ComputeTriplanarTexture(_BaseMap, sampler_BaseMap, _BaseMap_ST, IN.positionWS, IN.normalWS) * _BaseColor;

@@ -6,6 +6,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
+using System.Runtime.InteropServices;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -643,14 +644,14 @@ namespace LevelGeneration.Terrain
                         // Core mesh
                         if (coreMesh != null)
                         {
-                            bytes += coreMesh.vertexCount * Vertex.Size;
+                            bytes += coreMesh.vertexCount * Vertex.SizeBytes;
                             bytes += (int)coreMesh.GetIndexCount(0) * 2; // Index format is UInt16; 16 bits or 2 bytes.
                         }
 
                         // Transition mesh
                         if (transitionMesh != null)
                         {
-                            bytes += transitionMesh.vertexCount * Vertex.Size;
+                            bytes += transitionMesh.vertexCount * Vertex.SizeBytes;
                             bytes += (int)transitionMesh.GetIndexCount(0) * 2;
                         }
 
@@ -886,10 +887,8 @@ namespace LevelGeneration.Terrain
                     bytes += sizeof(float);     // worldSize
                     bytes += sizeof(float);     // worldScale
 
-                    bytes += densityCache.MemoryUsageBytes(); // densityCache
-                    bytes += renderer.MemoryUsageBytes();     // renderer
-
-                    // TODO: densitySampler
+                    bytes += densityCache.MemoryUsageBytes();   // densityCache
+                    bytes += renderer.MemoryUsageBytes();       // renderer
 
                     bytes += sizeof(bool);      // isUniformState
                     bytes += sizeof(bool);      // densityModified
@@ -1214,8 +1213,6 @@ namespace LevelGeneration.Terrain
                 // bricks
                 foreach (Brick brick in bricks.Values)
                     bytes += brick.MemoryUsageBytes();
-
-                // TODO: shapes
 
                 bytes += sizeof(int) * 3;    // originIndex
                 bytes += sizeof(int) * 3;    // lowerGridOffset
