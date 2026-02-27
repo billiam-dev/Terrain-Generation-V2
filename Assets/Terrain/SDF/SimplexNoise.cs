@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Unity.Mathematics;
 
-namespace LevelGeneration.Terrain
+namespace LevelGeneration.Terrain.SDF
 {
     //
     // Noise Shader Library for Unity - https://github.com/keijiro/NoiseShader

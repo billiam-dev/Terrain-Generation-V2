@@ -3,7 +3,8 @@ using Unity.Mathematics;
 namespace LevelGeneration.Terrain
 {
     /// <summary>
-    /// Readonly shape struct which can be passed to jobs.
+    /// An object which represents a transformable SDF in a terrain scene.
+    /// Can be added to a terrain and then moved or modifed. <- TODO: improve that behaviour now this is a class not a struct.
     /// </summary>
     public class Shape
     {

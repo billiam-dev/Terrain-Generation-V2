@@ -5,14 +5,12 @@ using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain
+namespace LevelGeneration.Terrain.SDF
 {
     public struct DensitySampler : IDisposable
     {
         readonly struct DistanceFunctionData
         {
-            // Ordered in decending order for cache efficiency.
-
             public readonly AffineTransform inverseMatrix; // 64 bytes
             public readonly float3 dimentions;             // 12 bytes
             public readonly uint functionID;               // 4 bytes
@@ -77,15 +75,59 @@ namespace LevelGeneration.Terrain
         }
 
         /* 
-         * Note that this function is hyper-optimized for it's in-game use case, that is with a terrain surface and single noise layer.
-         * The surface and noise components have been removed as Shape Brushes to avoid having to add extra cases for them in the main loop.
-         * -> Burst should be optimized for branchless execution.
+         * Sample function variants.
+         * These are selected by density JOB kernals, rather than in the loop to optimise for branch-less execution.
         */
 
         public readonly float Sample(float3 worldPosition)
         {
-            float result = Surface(worldPosition + m_SurfaceSettings.offset, m_SurfaceSettings.frequency, m_SurfaceSettings.amplitude);
+            float density = 0.0f;
 
+            // Initialize with surface noise.
+            density = SampleSurface(worldPosition, density);
+
+            // Apply terrain forming shapes before the noise step.
+            density = SampleShapeQueueSmooth(worldPosition, density);
+
+            // Apply global noise.
+            density = Sample3DNoise(worldPosition, density);
+
+            // Apply in-game user shapes (CSG).
+            //density = SampleShapeQueueHard(worldPosition, density);
+            // ^TODO
+
+            return density;
+        }
+
+        // TODO
+        public readonly float SampleWithCache(float3 worldPosition)
+        {
+            // Convert to 8 cell indices.
+            // Interpolate between values.
+
+            return 0.0f;
+        }
+
+        /*
+         * Sampler functions.
+         * The density field can be created by combining several sampling methods such as shapes, noise or cached data.
+        */
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly float SampleSurface(float3 worldPosition, float density)
+        {
+            return density + Surface(worldPosition + m_SurfaceSettings.offset, m_SurfaceSettings.frequency, m_SurfaceSettings.amplitude);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly float Sample3DNoise(float3 worldPosition, float density)
+        {
+            return density + Noise(worldPosition + m_GlobalNoiseSettings.offset, m_GlobalNoiseSettings.frequency, m_GlobalNoiseSettings.amplitude);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly float SampleShapeQueueSmooth(float3 worldPosition, float density)
+        {
             DistanceFunctionData sdf;
             float3 translatedPosition;
             float distance;
@@ -110,28 +152,55 @@ namespace LevelGeneration.Terrain
                 };
 
                 // Mix the old and new distance values using smooth min.
-                result = SmoothMin(result * sdf.minSign, distance, ProceduralTerrain.Smoothness) * sdf.minSign;
+                density = SmoothMin(density * sdf.minSign, distance, ProceduralTerrain.Smoothness) * sdf.minSign;
             }
 
-            // Apply noise.
-            result += Noise(worldPosition + m_GlobalNoiseSettings.offset, m_GlobalNoiseSettings.frequency, m_GlobalNoiseSettings.amplitude);
+            return density;
+        }
 
-            // Apply post-noise shapes (CSG) (TODO).
-            
-            // Note: in this section we ditch the smooth-min for maximum speed.
-            // The user can apply many more edits than the world generator, which focuses on minimal large shapes.
-            // See constructive solid geometry.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly float SampleShapeQueueHard(float3 worldPosition, float density)
+        {
+            DistanceFunctionData sdf;
+            float3 translatedPosition;
+            float distance;
 
-            // Note: for maximum speed, I could introduce a caching system which saves the initial state of the world to avoid the previous step.
-            // This cuts out the expensive smooth min and noise steps, which still allowing for dynamic user shapes.
+            // Apply pre-noise shapes.
+            for (int i = 0; i < m_NumShapesAllocated; i++)
+            {
+                sdf = m_DistanceFunctions[i];
 
-            return result;
+                // Get a translated position using the shape's inverse matrix (worldToLocal).
+                translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
+
+                // Calculate the distance value using the SDF function of the current shape.
+                distance = sdf.functionID switch
+                {
+                    0 => Sphere(translatedPosition, sdf.dimentions.x),
+                    1 => SemiSphere(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                    2 => Capsule(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                    3 => Torus(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                    4 => Cube(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, sdf.dimentions.z),
+                    _ => 0
+                };
+
+                // Mix the old and new distance values using smooth min.
+                density = math.min(density * sdf.minSign, distance) * sdf.minSign;
+            }
+
+            return density;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly float SampleDensityCache(float3 worldPosition, float density)
+        {
+            return density;
         }
 
         /*
          * Signed Distance Functions (Shapes)
          *
-         * Note: Spheres are the easiest shape to calculate and will create the most optimised result.
+         * Note: Spheres are the easiest shape to calculate and thus create the most optimised result.
          * https://iquilezles.org/articles/distfunctions/
         */
 

@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace LevelGeneration.Terrain
+namespace LevelGeneration.Terrain.SDF
 {
     public class DensityEvaluator : IDisposable
     {

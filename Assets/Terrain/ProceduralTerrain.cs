@@ -1,4 +1,3 @@
-using LevelGeneration.Terrain.Meshing;
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
@@ -6,6 +5,9 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
+
+using LevelGeneration.Terrain.SDF;
+using LevelGeneration.Terrain.Meshing;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -111,6 +113,8 @@ namespace LevelGeneration.Terrain
         /// Does not apply to the CSG shapes users apply by mining or building upon the terrain.
         /// </summary>
         public const float Smoothness = 6.0f;
+
+        const float FindSurfaceEpsilon = 0.1f;
 
         void OnEnable()
         {
@@ -381,15 +385,38 @@ namespace LevelGeneration.Terrain
         /// <summary>
         /// Raytraces the terrain to find the surface position.
         /// </summary>
-        /*
-        public float3 FindSurface(float3 origin, float3 direction)
+        public float3 FindSurface(float3 positionWS, float3 direction)
         {
-            // Optional TODO: Fast voxel traversal.
-            // We can use cached density values for this, if a brick we are visiting is not allocated we can skip it immediatly.
+            // Ensure direction is normalized.
+            direction = math.normalize(direction);
 
-            // http://www.cse.yorku.ca/~amana/research/grid.pdf
+            // Scale origin position by world scale.
+            positionWS *= 1.0f / k_WorldScale;
 
-            return 0.0f;
+            // Allocate a temporary density sampler.
+            DensitySampler sampler = new();
+            sampler.Allocate(m_Scene.Shapes, m_Scene.Surface, m_Scene.GlobalNoise, Allocator.Temp);
+
+            // Step forward by the sampled distance value until we are acceptably close to the surface.
+            float distance = sampler.Sample(positionWS);
+            while (distance > FindSurfaceEpsilon)
+            {
+                positionWS += direction * distance;
+                distance = sampler.Sample(positionWS);
+            }
+
+            // Dispose the sampler.
+            sampler.Dispose();
+
+            // Re-scale and return the position.
+            return positionWS * k_WorldScale;
+        }
+
+        // TODO
+        /*
+        public void CacheRegion(int regionSize)
+        {
+
         }
         */
 
@@ -1237,7 +1264,6 @@ namespace LevelGeneration.Terrain
 
             NoiseSettings surface;
             NoiseSettings globalNoise;
-            // int globalNoiseIndex; // TODO
 
             public List<Shape> Shapes => shapes;
 
