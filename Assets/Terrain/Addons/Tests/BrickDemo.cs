@@ -1,10 +1,9 @@
 #if UNITY_EDITOR
 using System;
 using Unity.Mathematics;
-using UnityEditor;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.Tests
+namespace LevelGeneration.Terrain.Addons.Tests
 {
     public class BrickDemo : MonoBehaviour
     {

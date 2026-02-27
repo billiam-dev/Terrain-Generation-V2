@@ -1,7 +1,7 @@
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.Tests
+namespace LevelGeneration.Terrain.Addons.Tests
 {
     [ExecuteInEditMode]
     [RequireComponent(typeof(ProceduralTerrain))]

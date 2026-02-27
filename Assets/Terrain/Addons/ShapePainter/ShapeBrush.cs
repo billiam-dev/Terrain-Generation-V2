@@ -2,7 +2,7 @@ using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.ShapePainter
+namespace LevelGeneration.Terrain.Addons.ShapePainter
 {
     [DisallowMultipleComponent]
     public class ShapeBrush : MonoBehaviour

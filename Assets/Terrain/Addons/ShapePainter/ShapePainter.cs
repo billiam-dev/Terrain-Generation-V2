@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.ShapePainter
+namespace LevelGeneration.Terrain.Addons.ShapePainter
 {
     [ExecuteInEditMode]
     [DisallowMultipleComponent]

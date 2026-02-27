@@ -3,7 +3,7 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.ShapePainter
+namespace LevelGeneration.Terrain.Addons.ShapePainter
 {
     [CanEditMultipleObjects]
     [CustomEditor(typeof(ShapeBrush), true)]
