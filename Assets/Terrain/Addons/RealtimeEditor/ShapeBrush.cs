@@ -2,91 +2,14 @@ using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.Addons.ShapePainter
+using LevelGeneration.Terrain.Scene;
+
+namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 {
+    [ExecuteInEditMode]
     [DisallowMultipleComponent]
     public class ShapeBrush : MonoBehaviour
     {
-        public DistanceFunction DistanceFunction
-        {
-            get
-            {
-                return m_DistanceFunction;
-            }
-            set
-            {
-                if (value != m_DistanceFunction)
-                {
-                    m_DistanceFunction = value;
-                    IsDirty = true;
-                }
-            }
-        }
-
-        public BlendMode BlendMode
-        {
-            get
-            {
-                return m_BlendMode;
-            }
-            set
-            {
-                if (value != m_BlendMode)
-                {
-                    BlendMode = value;
-                    IsDirty = true;
-                }
-            }
-        }
-
-        public float Dimention1
-        {
-            get
-            {
-                return m_Dimention1;
-            }
-            set
-            {
-                if (value != m_Dimention1)
-                {
-                    m_Dimention1 = value;
-                    IsDirty = true;
-                }
-            }
-        }
-
-        public float Dimention2
-        {
-            get
-            {
-                return m_Dimention2;
-            }
-            set
-            {
-                if (value != m_Dimention2)
-                {
-                    m_Dimention2 = value;
-                    IsDirty = true;
-                }
-            }
-        }
-
-        public float Dimention3
-        {
-            get
-            {
-                return m_Dimention3;
-            }
-            set
-            {
-                if (value != m_Dimention3)
-                {
-                    m_Dimention3 = value;
-                    IsDirty = true;
-                }
-            }
-        }
-
         [SerializeField]
         DistanceFunction m_DistanceFunction = DistanceFunction.Sphere;
 
@@ -102,38 +25,69 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
         [SerializeField, Min(0.0f)]
         float m_Dimention3 = 4.0f;
 
-        bool m_IsDirty;
+        bool m_PropertyChanged;
 
-        public bool IsDirty
+        Shape m_Shape;
+
+        public Shape Shape
         {
             get
             {
-                return m_IsDirty || transform.hasChanged;
-            }
-            set
-            {
-                transform.hasChanged = value;
-                m_IsDirty = value;
+                m_Shape ??= new(
+                    transform.position,
+                    transform.rotation,
+                    transform.lossyScale,
+                    m_DistanceFunction,
+                    m_BlendMode,
+                    m_Dimention1,
+                    m_Dimention2,
+                    m_Dimention3);
+
+                return m_Shape;
             }
         }
 
-        public Shape Shape => new(
-            transform.position,
-            transform.rotation,
-            transform.lossyScale,
+        void Update()
+        {
+            UpdateUnderlyingShape();
+        }
 
-            m_DistanceFunction,
-            m_BlendMode,
+        void UpdateUnderlyingShape()
+        {
+            if (transform.hasChanged)
+            {
+                AffineTransform matrix = new(transform.position, transform.rotation, transform.lossyScale);
+                if (!m_Shape.Matrix.Equals(matrix))
+                    m_Shape.Matrix = matrix;
 
-            m_Dimention1,
-            m_Dimention2,
-            m_Dimention3
-            );
+                transform.hasChanged = false;
+            }
+
+            if (m_PropertyChanged)
+            {
+                if (!m_Shape.DistanceFunction.Equals(m_DistanceFunction))
+                    m_Shape.DistanceFunction = m_DistanceFunction;
+
+                if (!m_Shape.BlendMode.Equals(m_BlendMode))
+                    m_Shape.BlendMode = m_BlendMode;
+
+                float3 dims = new(m_Dimention1, m_Dimention2, m_Dimention3);
+                if (!m_Shape.Dimentions.Equals(dims))
+                    m_Shape.Dimentions = dims;
+
+                m_PropertyChanged = false;
+            }
+        }
+
+        public void FlagPropertyChanged()
+        {
+            m_PropertyChanged = true;
+        }
 
 #if UNITY_EDITOR
         void OnValidate()
         {
-            m_IsDirty = true;
+            m_PropertyChanged = true;
 
             switch (m_DistanceFunction)
             {
@@ -190,13 +144,13 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
         {
             Gizmos.matrix = Matrix4x4.identity;
 
-            Shape.ComputeVolume(out float3 position, out float3 volume);
+            Volume shapeVolume = m_Shape.ComputeVolume();
 
             Gizmos.color = new(0, 1, 0, 0.1f);
-            Gizmos.DrawWireCube(position, volume);
+            Gizmos.DrawWireCube(shapeVolume.position, shapeVolume.size);
 
             Gizmos.color = new(0, 1, 0, 0.05f);
-            Gizmos.DrawCube(position, volume);
+            Gizmos.DrawCube(shapeVolume.position, shapeVolume.size);
         }
 #endif
     }

@@ -1,26 +1,27 @@
+/*
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.Addons.ShapePainter
+namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 {
     [ExecuteInEditMode]
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(ProceduralTerrain))]
+    [RequireComponent(typeof(TerrainEditor))]
     public class ShapePainter : MonoBehaviour
     {
         ShapeBrush[] m_ShapeBrushes;
         int m_NumActiveBrushes;
 
-        ProceduralTerrain m_Terrain;
+        TerrainEditor m_Terrain;
 
         void OnEnable()
         {
-            m_Terrain = GetComponent<ProceduralTerrain>();
+            m_Terrain = GetComponent<TerrainEditor>();
         }
 
         void OnDisable()
         {
             if (m_Terrain != null)
-                m_Terrain.ClearShapes();
+                m_Terrain.Clear();
 
             m_ShapeBrushes = null;
             m_NumActiveBrushes = -1;
@@ -40,7 +41,7 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
             // Build queue
             if (numActiveBrushes != m_NumActiveBrushes)
             {
-                m_Terrain.ClearShapes();
+                m_Terrain.Clear();
                 foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
                 {
                     if (shapeBrush.isActiveAndEnabled)
@@ -70,3 +71,4 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
         }
     }
 }
+*/

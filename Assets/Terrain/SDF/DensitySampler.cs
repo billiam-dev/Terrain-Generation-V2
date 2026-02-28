@@ -1,14 +1,19 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
+using LevelGeneration.Terrain.Scene;
+
 namespace LevelGeneration.Terrain.SDF
 {
     public struct DensitySampler : IDisposable
     {
+        /*
+         * Internal SDF data structs.
+         * Non-nullable equivalents to SDF scene density effectors.
+        */
         readonly struct DistanceFunctionData
         {
             public readonly AffineTransform inverseMatrix; // 64 bytes
@@ -25,17 +30,33 @@ namespace LevelGeneration.Terrain.SDF
             }
         }
 
-        NativeArray<DistanceFunctionData> m_DistanceFunctions;
-        int m_NumShapesAllocated;
+        readonly struct NoiseData
+        {
+            public readonly float3 offset;   // 12 bytes
+            public readonly float amplitude; // 4 byes
+            public readonly float frequency; // 4 bytes
+            public readonly int seed;        // 4 bytes
 
-        NoiseSettings m_SurfaceSettings;
-        NoiseSettings m_GlobalNoiseSettings;
+            public NoiseData(float3 offset, float amplitude, float frequency, int seed)
+            {
+                this.offset = offset;
+                this.amplitude = amplitude;
+                this.frequency = frequency;
+                this.seed = seed;
+            }
+        }
+
+        NativeArray<DistanceFunctionData> m_DistanceFunctions;
+        int m_NumDistanceFunctions;
+
+        NoiseData m_SurfaceNoise;
+        NoiseData m_GlobalNoise;
 
         bool m_IsAllocated;
 
         public readonly bool IsAllocated => m_IsAllocated;
 
-        public void Allocate(List<Shape> shapes, NoiseSettings surface, NoiseSettings globalNoise, Allocator allocator)
+        public void Allocate(Shape[] terrainShapes, NoiseLayer surfaceNoise, NoiseLayer globalNoise, Allocator allocator)
         {
             if (m_IsAllocated)
             {
@@ -43,21 +64,35 @@ namespace LevelGeneration.Terrain.SDF
                 return;
             }
 
-            m_NumShapesAllocated = shapes.Count;
-            m_DistanceFunctions = new(m_NumShapesAllocated, allocator);
+            // Terrain shapes.
+            m_NumDistanceFunctions = terrainShapes.Length;
+            m_DistanceFunctions = new(m_NumDistanceFunctions, allocator);
 
-            m_SurfaceSettings = surface;
-            m_GlobalNoiseSettings = globalNoise;
-
-            for (int i = 0; i < m_NumShapesAllocated; i++)
+            for (int i = 0; i < m_NumDistanceFunctions; i++)
             {
                 m_DistanceFunctions[i] = new DistanceFunctionData(
-                    shapes[i].inverseMatrix,
-                    shapes[i].dimentions,
-                    (uint)shapes[i].distanceFunction,
-                    shapes[i].blendMode == BlendMode.Subtractive
+                    terrainShapes[i].InverseMatrix,
+                    terrainShapes[i].Dimentions,
+                    (uint)terrainShapes[i].DistanceFunction,
+                    terrainShapes[i].BlendMode == BlendMode.Subtractive
                 );
             }
+
+            // TODO: Runtime shapes.
+
+            // Surface noise.
+            m_SurfaceNoise = new NoiseData(
+                surfaceNoise.Offset,
+                surfaceNoise.Amplitude,
+                surfaceNoise.Frequency,
+                surfaceNoise.Seed);
+
+            // Global noise.
+            m_GlobalNoise = new NoiseData(
+                globalNoise.Offset,
+                globalNoise.Amplitude,
+                globalNoise.Frequency,
+                globalNoise.Seed);
 
             m_IsAllocated = true;
         }
@@ -116,13 +151,15 @@ namespace LevelGeneration.Terrain.SDF
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly float SampleSurface(float3 worldPosition, float density)
         {
-            return density + Surface(worldPosition + m_SurfaceSettings.offset, m_SurfaceSettings.frequency, m_SurfaceSettings.amplitude);
+            // TODO: seed
+            return density + Surface(worldPosition + m_SurfaceNoise.offset, m_SurfaceNoise.frequency, m_SurfaceNoise.amplitude);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public readonly float Sample3DNoise(float3 worldPosition, float density)
         {
-            return density + Noise(worldPosition + m_GlobalNoiseSettings.offset, m_GlobalNoiseSettings.frequency, m_GlobalNoiseSettings.amplitude);
+            // TODO: seed
+            return density + Noise(worldPosition + m_GlobalNoise.offset, m_GlobalNoise.frequency, m_GlobalNoise.amplitude);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -133,7 +170,7 @@ namespace LevelGeneration.Terrain.SDF
             float distance;
 
             // Apply pre-noise shapes.
-            for (int i = 0; i < m_NumShapesAllocated; i++)
+            for (int i = 0; i < m_NumDistanceFunctions; i++)
             {
                 sdf = m_DistanceFunctions[i];
 
@@ -166,7 +203,7 @@ namespace LevelGeneration.Terrain.SDF
             float distance;
 
             // Apply pre-noise shapes.
-            for (int i = 0; i < m_NumShapesAllocated; i++)
+            for (int i = 0; i < m_NumDistanceFunctions; i++)
             {
                 sdf = m_DistanceFunctions[i];
 

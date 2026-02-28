@@ -1,20 +1,152 @@
+using System.Collections.Generic;
 using Unity.Mathematics;
 
-namespace LevelGeneration.Terrain
+namespace LevelGeneration.Terrain.Scene
 {
+    public class ShapeQueue
+    {
+        readonly List<Shape> shapes;
+        readonly List<Volume> modifiedVolumes;
+
+        public Shape[] Shapes => shapes.ToArray();
+
+        public int Count => shapes.Count;
+
+        public Volume[] ModifiedVolumes => modifiedVolumes.ToArray();
+
+        bool isDirty;
+
+        public bool IsDirty
+        {
+            get
+            {
+                return isDirty;
+            }
+            set
+            {
+                modifiedVolumes.Clear();
+                isDirty = value;
+            }
+        }
+
+        public ShapeQueue()
+        {
+            shapes = new();
+            modifiedVolumes = new();
+        }
+
+        public bool AddShape(Shape shape)
+        {
+            if (shapes.Contains(shape))
+                return false;
+
+            shapes.Add(shape);
+            modifiedVolumes.Add(shape.ComputeVolume());
+
+            isDirty = true;
+
+            return true;
+        }
+
+        public bool RemoveShape(Shape shape)
+        {
+            if (!shapes.Contains(shape))
+                return false;
+
+            shapes.Remove(shape);
+            modifiedVolumes.Add(shape.ComputeVolume());
+
+            isDirty = true;
+
+            return true;
+        }
+
+        public void Clear()
+        {
+            if (shapes.Count == 0)
+                return;
+
+            shapes.Clear();
+            isDirty = true;
+        }
+    }
+
     /// <summary>
     /// An object which represents a transformable SDF in a terrain scene.
-    /// Can be added to a terrain and then moved or modifed. <- TODO: improve that behaviour now this is a class not a struct.
+    /// Can be added to a terrain and then moved or modifed.
     /// </summary>
     public class Shape
     {
-        public readonly AffineTransform matrix;
-        public readonly AffineTransform inverseMatrix;
+        AffineTransform matrix;
+        AffineTransform inverseMatrix;
 
-        public readonly DistanceFunction distanceFunction;
-        public readonly BlendMode blendMode;
+        DistanceFunction distanceFunction;
+        BlendMode blendMode;
 
-        public readonly float3 dimentions;
+        float3 dimentions;
+
+        public AffineTransform Matrix
+        {
+            get
+            {
+                return matrix;
+            }
+            set
+            {
+                matrix = value;
+                inverseMatrix = math.inverse(value);
+                IsDirty = true;
+            }
+        }
+
+        public AffineTransform InverseMatrix
+        {
+            get
+            {
+                return inverseMatrix;
+            }
+        }
+
+        public DistanceFunction DistanceFunction
+        {
+            get
+            {
+                return distanceFunction;
+            }
+            set
+            {
+                distanceFunction = value;
+                IsDirty = true;
+            }
+        }
+
+        public BlendMode BlendMode
+        {
+            get
+            {
+                return blendMode;
+            }
+            set
+            {
+                blendMode = value;
+                IsDirty = true;
+            }
+        }
+
+        public float3 Dimentions
+        {
+            get
+            {
+                return dimentions;
+            }
+            set
+            {
+                dimentions = value;
+                IsDirty = true;
+            }
+        }
+
+        public bool IsDirty;
 
         // Multiplier for how much the smoothness value should extend the brick volume effected by this shape.
         // Larger values result in a larger volume allowing for smoothing over larger distances at the expense of speed.
@@ -49,10 +181,15 @@ namespace LevelGeneration.Terrain
 
         }
 
+        public Shape()
+        {
+
+        }
+
         /// <summary>
         /// Compute a world space AABB for the shape.
         /// </summary>
-        public void ComputeVolume(out float3 position, out float3 volume)
+        public Volume ComputeVolume()
         {
             // Compute an accurate bounding volume for the shape in world space.
             float3 boundsVolume = 0;
@@ -116,8 +253,10 @@ namespace LevelGeneration.Terrain
                 (maxZ - minZ) / 2.0f
                 );
 
-            volume = boundsVolume;
-            position = matrix.t;
+            return new Volume(
+                matrix.t,
+                boundsVolume
+            );
         }
     }
 

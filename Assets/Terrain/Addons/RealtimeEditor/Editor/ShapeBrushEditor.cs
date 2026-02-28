@@ -3,7 +3,9 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.Addons.ShapePainter
+using LevelGeneration.Terrain.Scene;
+
+namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 {
     [CanEditMultipleObjects]
     [CustomEditor(typeof(ShapeBrush), true)]
@@ -123,7 +125,7 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
                 Undo.RecordObject(target, "Edited Sphere");
 
                 m_Dimention1.SetUnderlyingValue(handle.radius);
-                m_Target.IsDirty = true;
+                m_Target.FlagPropertyChanged();
             }
         }
 
@@ -144,7 +146,7 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
                 Undo.RecordObject(target, "Edited Semi-Sphere");
 
                 m_Dimention1.SetUnderlyingValue(handle.radius);
-                m_Target.IsDirty = true;
+                m_Target.FlagPropertyChanged();
             }
         }
 
@@ -166,7 +168,7 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
 
                 m_Dimention1.SetUnderlyingValue((handle.height / 2.0f) - handle.radius);
                 m_Dimention2.SetUnderlyingValue(handle.radius);
-                m_Target.IsDirty = true;
+                m_Target.FlagPropertyChanged();
             }
         }
 
@@ -187,7 +189,7 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
                 Undo.RecordObject(target, "Edited Torus");
 
                 m_Dimention1.SetUnderlyingValue(handle.outerRadius);
-                m_Target.IsDirty = true;
+                m_Target.FlagPropertyChanged();
             }
         }
 
@@ -209,7 +211,7 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
                 m_Dimention1.SetUnderlyingValue(handle.size.x / 2.0f);
                 m_Dimention2.SetUnderlyingValue(handle.size.y / 2.0f);
                 m_Dimention3.SetUnderlyingValue(handle.size.z / 2.0f);
-                m_Target.IsDirty = true;
+                m_Target.FlagPropertyChanged();
             }
         }
     }

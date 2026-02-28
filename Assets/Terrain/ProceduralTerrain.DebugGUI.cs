@@ -17,9 +17,9 @@ namespace LevelGeneration.Terrain
             for (int i = 0; i < k_NumBrickmapLevels; i++)
                 brickmapMemoryUsage += m_BrickmapLevels[i].MemoryUsageBytes();
 
-            // Scene info
-            GUI.Label(rect, $"Shapes in scene: {m_Scene.NumShapes}");
-            rect.y += k_SingleLineHeight * 2.0f;
+            // Scene info TODO
+            //GUI.Label(rect, $"Shapes in scene: {m_Scene.NumShapes}");
+            //rect.y += k_SingleLineHeight * 2.0f;
 
             // Brick constants
             GUI.Label(rect, $"Brick Size: {k_BrickSize} (+3) (Cells per brick: {cellsPerBrick})");

@@ -2,14 +2,17 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-namespace LevelGeneration.Terrain.Addons.ShapePainter
+namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 {
-    public class SemiSphereBoundsHandle : PrimitiveBoundsHandle
+    /// <summary>
+    /// A compound handle to edit a torus-shaped bounding volume in the Scene view.
+    /// </summary>
+    public class TorusBoundsHandle : PrimitiveBoundsHandle
     {
         /// <summary>
-        /// Returns or specifies the radius of the semi-sphere bounding volume.
+        /// Returns or specifies the outer radius of the torus bounding volume.
         /// </summary>
-        public float radius
+        public float outerRadius
         {
             get
             {
@@ -32,24 +35,24 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
         }
 
         /// <summary>
-        /// Returns or specifies the height that the semi-sphere bounding handle is cut, between -1 and 1.
+        /// Specifies the inner radius of the torus bounding handle.
         /// </summary>
-        public float slice
+        public float innerRadius
         {
             get;
             set;
         }
 
         /// <summary>
-        /// Create a new instance of the SemiSphereBoundsHandle class.
+        /// Create a new instance of the TorusBoundsHandle class.
         /// </summary>
-        public SemiSphereBoundsHandle()
+        public TorusBoundsHandle()
         {
-            axes = Axes.X | Axes.Y | Axes.Z;
+            axes = Axes.X | Axes.Z;
         }
 
         /// <summary>
-        /// Draw a wireframe semi-shere for this instance.
+        /// Draw a wireframe torus for this instance.
         /// </summary>
         protected override void DrawWireframe()
         {
@@ -57,17 +60,22 @@ namespace LevelGeneration.Terrain.Addons.ShapePainter
             Vector3 forward = Vector3.forward;
             Vector3 right = Vector3.right;
 
-            float r = radius;
-            float hs = slice * radius;
-            float rs = Mathf.Sqrt((radius * radius) - (hs * hs));
+            float or = outerRadius;
+            float ir = innerRadius;
 
-            // Outer bounds
-            Handles.DrawWireArc(center, up, right, 360f, r);
-            Handles.DrawWireArc(center, forward, right, 360f, r);
-            Handles.DrawWireArc(center, right, forward, 360f, r);
+            // Outer rings
+            Handles.DrawWireArc(center + (forward * or), right, forward, 360f, ir);
+            Handles.DrawWireArc(center - (forward * or), right, forward, 360f, ir);
+            Handles.DrawWireArc(center + (right * or), forward, right, 360f, ir);
+            Handles.DrawWireArc(center - (right * or), forward, right, 360f, ir);
 
-            // Slice
-            Handles.DrawWireArc(center + (up * hs), up, right, 360f, rs);
+            // Top / bottom rings
+            Handles.DrawWireArc(center + (up * ir), up, right, 360f, or);
+            Handles.DrawWireArc(center - (up * ir), up, right, 360f, or);
+
+            // Side rings
+            Handles.DrawWireArc(center, up, right, 360f, or + ir);
+            Handles.DrawWireArc(center, up, right, 360f, or - ir);
         }
 
         protected override Bounds OnHandleChanged(HandleDirection handle, Bounds boundsOnClick, Bounds newBounds)

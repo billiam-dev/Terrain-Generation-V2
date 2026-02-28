@@ -1,75 +1,86 @@
 using Unity.Mathematics;
 using UnityEngine;
 
+using LevelGeneration.Terrain.Scene;
+
 namespace LevelGeneration.Terrain.Addons.Tests
 {
     [ExecuteInEditMode]
     [RequireComponent(typeof(ProceduralTerrain))]
     public class TerrainBenchmarker : MonoBehaviour
     {
-        enum Test
+        enum TestMode
         {
-            Null,
             SphereGrid
         }
 
-        ProceduralTerrain m_Terrain;
-
         [SerializeField]
-        Test testMode = Test.Null;
+        TestMode testMode = TestMode.SphereGrid;
 
-        void OnEnable()
+        ProceduralTerrain m_Terrain;
+        SDFScene m_Scene;
+
+        void Awake()
         {
             m_Terrain = GetComponent<ProceduralTerrain>();
         }
 
+        void OnEnable()
+        {
+            m_Scene = new();
+            m_Terrain.LoadScene(m_Scene);
+
+            UpdateScene();
+        }
+
         void OnDisable()
         {
-            if (m_Terrain != null)
-                m_Terrain.ClearShapes();
+            m_Terrain.UnloadScene();
+            m_Scene = null;
         }
 
-        void Start()
+        void UpdateScene()
         {
-            if (m_Terrain)
-                CreateScene();
-        }
-
-        void CreateScene()
-        {
-            m_Terrain.ClearShapes();
+            m_Scene.Clear();
 
             switch (testMode)
             {
-                case Test.SphereGrid:
-                    int gridSize = 8;
-                    float separation = 64.0f;
-                    float sphereSize = 8.0f;
-
-                    for (int x = 0; x < gridSize; x++)
-                    {
-                        for (int y = 0; y < gridSize; y++)
-                        {
-                            for (int z = 0; z < gridSize; z++)
-                            {
-                                float3 pos = new(x, y, z);
-                                pos -= gridSize / 2.0f - 0.5f;
-                                pos *= separation;
-
-                                m_Terrain.AddShape(new Shape(pos, quaternion.identity, 1.0f, DistanceFunction.Sphere, BlendMode.Additive, 1.0f, sphereSize));
-                            }
-                        }
-                    }
-
+                case TestMode.SphereGrid:
+                    MakeSphereGrid();
                     break;
+            }
+        }
+
+        //
+        // Test scene fillers.
+        //
+        void MakeSphereGrid()
+        {
+            const int gridSize = 4;
+            const float separation = 64.0f;
+            const float sphereSize = 8.0f;
+
+            for (int x = 0; x < gridSize; x++)
+            {
+                for (int y = 0; y < gridSize; y++)
+                {
+                    for (int z = 0; z < gridSize; z++)
+                    {
+                        float3 pos = new(x, y, z);
+                        pos -= gridSize / 2.0f - 0.5f;
+                        pos *= separation;
+
+                        m_Scene.terrainShapes.AddShape(new Shape(pos, quaternion.identity, 1.0f, DistanceFunction.Sphere, BlendMode.Additive, sphereSize));
+                    }
+                }
             }
         }
 
 #if UNITY_EDITOR
         void OnValidate()
         {
-            if (m_Terrain)
-                CreateScene();
+            if (m_Scene != null)
+                UpdateScene();
         }
 #endif
     }

@@ -3,6 +3,7 @@ using Unity.Collections;
 
 namespace LevelGeneration.Terrain.SDF
 {
+    // So this becomes readonly struct DensityCacheData, in DensitySampler like DistanceFuncData & NoiseData.
     public struct DensityCache : IDisposable
     {
         /// <summary>

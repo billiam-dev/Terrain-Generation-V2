@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
 
+using LevelGeneration.Terrain.Scene;
+
 namespace LevelGeneration.Terrain
 {
     public partial class ProceduralTerrain : MonoBehaviour
@@ -134,13 +136,12 @@ namespace LevelGeneration.Terrain
 
                 foreach (Shape shape in shapes)
                 {
-                    shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
-                    GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
+                    IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, shape.ComputeVolume());
 
-                    for (int x = 0; x < volume.x; x++)
-                        for (int y = 0; y < volume.y; y++)
-                            for (int z = 0; z < volume.z; z++)
-                                bricksInShapeVolumes.Add(initialIndex + new int3(x, y, z));
+                    for (int x = 0; x < indices.size.x; x++)
+                        for (int y = 0; y < indices.size.y; y++)
+                            for (int z = 0; z < indices.size.z; z++)
+                                bricksInShapeVolumes.Add(indices.coordinate + new int3(x, y, z));
                 }
 
                 Gizmos.color = new Color(1.0f, 0.1f, 0.0f, 0.1f);

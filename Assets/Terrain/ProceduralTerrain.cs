@@ -6,6 +6,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+using LevelGeneration.Terrain.Scene;
 using LevelGeneration.Terrain.SDF;
 using LevelGeneration.Terrain.Meshing;
 
@@ -15,31 +16,9 @@ using UnityEditor;
 
 namespace LevelGeneration.Terrain
 {
-    [ExecuteInEditMode]
     [DisallowMultipleComponent]
     public partial class ProceduralTerrain : MonoBehaviour
     {
-        /// <summary>
-        /// Initialize the density field with a noise-based surface.
-        /// </summary>
-        [Tooltip("Initialize the density field with a noise-based surface.")]
-        public bool EnableSurface = false;
-
-        public float SurfaceNoiseAmplitude = 50.0f;
-        public float SurfaceNoiseFrequency = 0.001f;
-        public float SurfaceYPosition = 0.0f;
-        public uint SurfaceSeed = 0;
-
-        /// <summary>
-        /// Apply a 3D Simplex Noise layer to the entire terrain.
-        /// </summary>
-        [Tooltip("Apply a 3D Simplex Noise layer to the entire terrain.")]
-        public bool EnableGlobalNoise = false;
-
-        public float GlobalNoiseAmplitude = 4.0f;
-        public float GlobalNoiseFrequency = 0.02f;
-        public uint GlobalNoiseSeed = 0;
-
         /// <summary>
         /// Apply a material to the terrain.
         /// </summary>
@@ -84,7 +63,6 @@ namespace LevelGeneration.Terrain
 
         static ProceduralTerrain s_Instance;
 
-        SDFScene m_Scene;
         Brickmap[] m_BrickmapLevels;
         MaterialPropertyBlock m_MaterialProperties;
 
@@ -92,6 +70,8 @@ namespace LevelGeneration.Terrain
         BatchChunkMesher m_Mesher;
 
         bool m_Initialized;
+
+        SDFScene m_Scene;
 
         // Debug info
         MeanTime m_AvgDensityEvalTime;
@@ -114,10 +94,40 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public const float Smoothness = 6.0f;
 
-        const float FindSurfaceEpsilon = 0.1f;
-
-        void OnEnable()
+#if !UNITY_EDITOR
+        void Update()
         {
+            if (!m_Initialized)
+                return;
+
+            UpdateTerrain();
+        }
+#endif
+
+#if UNITY_EDITOR
+        void OnDrawGizmos()
+        {
+            if (!m_Initialized)
+                return;
+
+            DrawDebugGizmos();
+            DrawDensityTester();
+        }
+#endif
+
+        void OnGUI()
+        {
+            if (!m_Initialized)
+                return;
+
+            DisplayDebugGUI();
+        }
+
+        void TryInitializeAsInstance()
+        {
+            if (m_Initialized)
+                return;
+
             if (s_Instance != null)
             {
                 Debug.LogWarning($"Could not initialize {name}, only one ProceduralTerrain may exist in the scene.");
@@ -125,9 +135,6 @@ namespace LevelGeneration.Terrain
             }
 
             s_Instance = this;
-
-            if (m_Initialized)
-                return;
 
             Initialize();
 
@@ -137,7 +144,7 @@ namespace LevelGeneration.Terrain
 #endif
         }
 
-        void OnDisable()
+        void TryDisposeInstance()
         {
             if (!m_Initialized)
                 return;
@@ -152,32 +159,8 @@ namespace LevelGeneration.Terrain
             Dispose();
         }
 
-#if !UNITY_EDITOR
-        void Update()
+        void Initialize()
         {
-            UpdateTerrain();
-        }
-#endif
-
-#if UNITY_EDITOR
-        void OnDrawGizmos()
-        {
-            if (!isActiveAndEnabled)
-                return;
-
-            DrawDebugGizmos();
-            DrawDensityTester();
-        }
-#endif
-
-        void OnGUI()
-        {
-            DisplayDebugGUI();
-        }
-
-        public void Initialize()
-        {
-            m_Scene = new();
             m_BrickmapLevels = new Brickmap[k_NumBrickmapLevels];
             m_MaterialProperties = new();
 
@@ -190,23 +173,13 @@ namespace LevelGeneration.Terrain
             m_DensityEvaluator.Allocate(k_BrickSize);
             m_Mesher.Allocate();
 
-            if (EnableSurface)
-                m_Scene.SetSurfaceSettings(new NoiseSettings(new float3(0, SurfaceYPosition, 0), SurfaceNoiseAmplitude, SurfaceNoiseFrequency, GlobalNoiseSeed));
-            else
-                m_Scene.SetSurfaceSettings(new NoiseSettings(0.0f, 0.0f));
-
-            if (EnableGlobalNoise)
-                m_Scene.SetGlobalNoiseSettings(new NoiseSettings(0, GlobalNoiseAmplitude, GlobalNoiseFrequency, GlobalNoiseSeed));
-            else
-                m_Scene.SetGlobalNoiseSettings(new NoiseSettings(0.0f, 0.0f));
-
             for (int i = 0; i < k_NumBrickmapLevels; i++)
                 m_BrickmapLevels[i] = new(k_BrickmapLevelSize, k_BrickSize, i, k_WorldScale);
 
             m_Initialized = true;
         }
 
-        public void Dispose()
+        void Dispose()
         {
             foreach (Brickmap brickmap in m_BrickmapLevels)
                 brickmap.Dispose();
@@ -214,7 +187,6 @@ namespace LevelGeneration.Terrain
             m_DensityEvaluator.Dispose();
             m_Mesher.Dispose();
 
-            m_Scene = null;
             m_BrickmapLevels = null;
             m_MaterialProperties = null;
 
@@ -229,6 +201,9 @@ namespace LevelGeneration.Terrain
 
         void UpdateTerrain()
         {
+            if (m_Scene == null)
+                return;
+
 #if UNITY_EDITOR
             Camera camera = Application.isPlaying ? ObserverCamera : Camera.current;
 #else
@@ -240,9 +215,30 @@ namespace LevelGeneration.Terrain
 
             Stopwatch.Start(ref m_UpdateTime);
 
-            float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
+            // Evaluate scene changes.
+            if (m_Scene.surfaceNoise.IsDirty || m_Scene.globalNoise.IsDirty)
+            {
+                foreach (Brickmap brickmap in m_BrickmapLevels)
+                    brickmap.MarkAllAsModified();
+
+                m_Scene.surfaceNoise.IsDirty = false;
+                m_Scene.globalNoise.IsDirty = false;
+            }
+
+            if (m_Scene.terrainShapes.IsDirty)
+            {
+                foreach (Volume volume in m_Scene.terrainShapes.ModifiedVolumes)
+                {
+                    foreach (Brickmap brickmap in m_BrickmapLevels)
+                        brickmap.MarkBoundsAsModified(volume);
+                }
+
+                m_Scene.terrainShapes.IsDirty = false;
+            }
 
             // Update brickmap levels.
+            float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
+
             m_BrickmapLevels[0].Update(camera, observerPosition, 0, m_Scene);
             for (int i = 1; i < k_NumBrickmapLevels; i++)
                 m_BrickmapLevels[i].Update(camera, observerPosition, m_BrickmapLevels[i - 1].OriginIndex, m_Scene);
@@ -261,14 +257,14 @@ namespace LevelGeneration.Terrain
                 m_AvgMeshingTime.AddTime(m_TotalMeshingTime / m_TotalMeshingTasks);
             }
 
-            // Disable scene changed flag.
-            m_Scene.IsDirty = false;
-
             Stopwatch.End(ref m_UpdateTime);
         }
 
         void RenderTerrain(ScriptableRenderContext context, Camera camera)
         {
+            if (m_Scene == null)
+                return;
+
             m_DrawingVertices = 0;
             m_DrawingIndices = 0;
 
@@ -281,84 +277,26 @@ namespace LevelGeneration.Terrain
         }
 
         /// <summary>
-        /// Add a shape to the terrain, returns an index which acts as a handle to that shape.
+        /// Load a SDF scene.
+        /// The terrain will automatically respond to changes in the scene if it is flagged as dirty.
         /// </summary>
-        public void AddShape(Shape shape)
+        public void LoadScene(SDFScene scene)
         {
-            if (!m_Initialized)
-                return;
+            TryInitializeAsInstance();
 
-            shape.ComputeVolume(out float3 position, out float3 volume);
-            MarkBoundsAsModified(position, volume);
-
-            m_Scene.AddShape(shape);
+            if (s_Instance == this)
+                m_Scene = scene;
         }
 
         /// <summary>
-        /// Remove a shape from the terrain using its index handle.
+        /// Unload the current SDF scene.
         /// </summary>
-        public bool RemoveShape(int index)
+        public void UnloadScene()
         {
-            if (!m_Initialized)
-                return false;
+            TryDisposeInstance();
 
-            if (index < m_Scene.NumShapes)
-            {
-                m_Scene.Shapes[index].ComputeVolume(out float3 position, out float3 volume);
-                MarkBoundsAsModified(position, volume);
-
-                m_Scene.RemoveShape(index);
-
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Replace an existing shape using its index handle.
-        /// </summary>
-        public bool ReplaceShape(int index, Shape shape)
-        {
-            if (!m_Initialized)
-                return false;
-
-            if (index < m_Scene.NumShapes)
-            {
-                // Mark old shape bricks as modified.
-                m_Scene.Shapes[index].ComputeVolume(out float3 position, out float3 volume);
-                MarkBoundsAsModified(position, volume);
-
-                // Mark new shape bricks as modified.
-                shape.ComputeVolume(out position, out volume);
-                MarkBoundsAsModified(position, volume);
-                
-                m_Scene.ReplaceShape(index, shape);
-
-                return true;
-            }
-
-            return false;
-        }
-
-        void MarkBoundsAsModified(float3 boundsCentre, float3 boundsVolume)
-        {
-            foreach (Brickmap brickmap in m_BrickmapLevels)
-                brickmap.MarkBoundsAsModified(boundsCentre, boundsVolume);
-        }
-
-        /// <summary>
-        /// Clear all shapes in the scene.
-        /// </summary>
-        public void ClearShapes()
-        {
-            if (!m_Initialized)
-                return;
-
-            foreach (Brickmap brickmap in m_BrickmapLevels)
-                brickmap.Clear();
-
-            m_Scene?.Clear();
+            if (s_Instance == this)
+                m_Scene = null;
         }
 
         /// <summary>
@@ -371,7 +309,7 @@ namespace LevelGeneration.Terrain
 
             // Allocate a temporary density sampler.
             DensitySampler sampler = new();
-            sampler.Allocate(m_Scene.Shapes, m_Scene.Surface, m_Scene.GlobalNoise, Allocator.Temp);
+            sampler.Allocate(m_Scene.terrainShapes.Shapes, m_Scene.surfaceNoise, m_Scene.globalNoise, Allocator.Temp);
 
             // Sample the SDF at the given position.
             float value = sampler.Sample(positionWS);
@@ -385,7 +323,7 @@ namespace LevelGeneration.Terrain
         /// <summary>
         /// Raytraces the terrain to find the surface position.
         /// </summary>
-        public float3 FindSurface(float3 positionWS, float3 direction)
+        public float3 FindSurface(float3 positionWS, float3 direction, float minDistance = 0.1f)
         {
             // Ensure direction is normalized.
             direction = math.normalize(direction);
@@ -395,11 +333,11 @@ namespace LevelGeneration.Terrain
 
             // Allocate a temporary density sampler.
             DensitySampler sampler = new();
-            sampler.Allocate(m_Scene.Shapes, m_Scene.Surface, m_Scene.GlobalNoise, Allocator.Temp);
+            sampler.Allocate(m_Scene.terrainShapes.Shapes, m_Scene.surfaceNoise, m_Scene.globalNoise, Allocator.Temp);
 
             // Step forward by the sampled distance value until we are acceptably close to the surface.
             float distance = sampler.Sample(positionWS);
-            while (distance > FindSurfaceEpsilon)
+            while (distance > minDistance)
             {
                 positionWS += direction * distance;
                 distance = sampler.Sample(positionWS);
@@ -412,22 +350,18 @@ namespace LevelGeneration.Terrain
             return positionWS * k_WorldScale;
         }
 
-        // TODO
-        /*
-        public void CacheRegion(int regionSize)
+        /// <summary>
+        /// Converts a world space aabb to a set of iterable brick indices.
+        /// Returns the initial index and the size of the volume in each axis.
+        /// </summary>
+        static IntVolume GetBrickVolumeFromAABB(int brickSize, float scale, Volume bounds)
         {
-
-        }
-        */
-
-        static void GetBrickVolumeFromAABB(int brickSize, float scale, float3 boundsCentre, float3 boundsVolume, out int3 initialIndex, out int3 volume)
-        {
-            ComputeIndices(brickSize, scale, boundsCentre, out _, out int3 brickIndex, out int3 localCellIndex);
+            ComputeIndices(brickSize, scale, bounds.position, out _, out int3 brickIndex, out int3 localCellIndex);
 
             float3 worldBrickSize = brickSize * scale;
 
             // Snap the volume to the brick grid and output the result.
-            volume = (int3)math.ceil(boundsVolume.xyz / worldBrickSize) + 1; // TODO: Remove +1 when possible. This is especially detremental on higher brickmap levels.
+            int3 volume = (int3)math.ceil(bounds.size / worldBrickSize) + 1; // TODO: Remove +1 when possible. This is especially detremental on higher brickmap levels.
 
             // Compute the central position of the volume.
             int3 centreIndex = brickIndex;
@@ -451,9 +385,17 @@ namespace LevelGeneration.Terrain
             }
 
             // Convert the central volume position to a brick index and offset by half the volume to get the initial brick index.
-            initialIndex = centreIndex - (volume / 2);
+            int3 initialIndex = centreIndex - (volume / 2);
+
+            return new IntVolume(
+                initialIndex,
+                volume
+                );
         }
 
+        /// <summary>
+        /// Takes a world space position and returns the correlating global cell index, brick index and local cell index (to the bricks origin).
+        /// </summary>
         static void ComputeIndices(int brickSize, float scale, float3 positionWS, out int3 globalCellIndex, out int3 brickIndex, out int3 localCellIndex)
         {
             // Scale position by inverse terrain scale.
@@ -742,27 +684,21 @@ namespace LevelGeneration.Terrain
                         renderer.Dispose();
                 }
 
-                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene, bool queueTransitionUpdate, byte neighborLOD)
+                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene)
                 {
                     // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
                         return;
 
-                    // Update packed neighbor LOD data.
-                    if (levelScale > 1)
-                    {
-                        if (queueTransitionUpdate || this.neighborLOD != neighborLOD)
-                        {
-                            this.neighborLOD = neighborLOD;
-                            transitionUpdateQueued = true;
-                        }
-                    }
+                    // Queue transition update if density has been modified.
+                    if (densityModified && levelScale > 1)
+                        transitionUpdateQueued = true;
 
                     // Allocate a density sampler in advance for core or transition density JOBs.
                     if (densityModified || transitionUpdateQueued)
                     {
                         // TODO: possibly run FindIntersectingShapes(shapes) as JOBs in parallel, this is quite slow.
-                        densitySampler.Allocate(FindIntersectingShapes(shapes), scene.Surface, scene.GlobalNoise, Allocator.TempJob);
+                        densitySampler.Allocate(FindIntersectingShapes(shapes), scene.surfaceNoise, scene.globalNoise, Allocator.TempJob); // TODO: allocate in ProceduralTerrain and pass around, perhaps with an indices array for shapes?
                     }
 
                     //
@@ -860,6 +796,15 @@ namespace LevelGeneration.Terrain
                         densitySampler.Dispose();
                 }
 
+                public void UpdateNeighborLOD(byte neighborLOD)
+                {
+                    if (this.neighborLOD != neighborLOD)
+                    {
+                        this.neighborLOD = neighborLOD;
+                        transitionUpdateQueued = true;
+                    }
+                }
+
                 public void Render(Camera renderCamera, Material material, MaterialPropertyBlock mpb)
                 {
                     // We can skip rendering if this is of uniform state.
@@ -873,26 +818,25 @@ namespace LevelGeneration.Terrain
                     renderer.Draw(worldPosition, material, mpb, renderCamera, neighborLOD);
                 }
 
-                List<Shape> FindIntersectingShapes(List<Shape> shapes)
+                Shape[] FindIntersectingShapes(List<Shape> shapes)
                 {
                     List<Shape> intersectingShapes = new();
 
                     foreach (Shape shape in shapes)
                     {
                         // Get brick volume from shape.
-                        shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
-                        GetBrickVolumeFromAABB(size, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
+                        IntVolume indices = GetBrickVolumeFromAABB(size, levelScale * worldScale, shape.ComputeVolume());
 
                         // Account for density data overflowing into adjacent bricks by extending the brick volume by 1 on each side.
-                        initialIndex -= 1;
-                        volume += 2;
+                        indices.coordinate -= 1;
+                        indices.size += 2;
 
                         // If brick index is within the volume, add to the list.
-                        if (math.all(index >= initialIndex) && math.all(index < initialIndex + volume))
+                        if (math.all(index >= indices.coordinate) && math.all(index < indices.coordinate + indices.size))
                             intersectingShapes.Add(shape);
                     }
 
-                    return intersectingShapes;
+                    return intersectingShapes.ToArray();
                 }
 
                 bool InViewFrustum(Camera camera)
@@ -941,7 +885,7 @@ namespace LevelGeneration.Terrain
             readonly int quarterBrickmapSize;  // One fourth the number of bricks per axis contained in this brick map.
             readonly int levelScale;           // The scale multiplier relative to the smallest brickmap level, derrived from the level index with the equation (2 ^ level).
 
-            readonly Dictionary<int3, Brick> bricks; // Note: the memory usage of a dictionary only grows if the Count exceeds its initialized size. An indirection / ptr system may be better, but it risks lots of effort for a marginal reward.
+            readonly Dictionary<int3, Brick> bricks; // Or should I call it the Bricktionary?
             readonly List<Shape> shapes;
 
             int3 originIndex;                  // The global brick index in which this map currently originates.
@@ -1019,13 +963,13 @@ namespace LevelGeneration.Terrain
                 bool originHasMoved = math.any(newOriginIndex != originIndex);
                 bool lowerGridHasMoved = math.any(newLowerGridOffset != lowerGridOffset);
 
-                bool isMajorUpdate = originHasMoved || lowerGridHasMoved;
-                if (isMajorUpdate)
-                    Stopwatch.Start(ref majorUpdateTime);
+                bool anyOriginShifted = originHasMoved || lowerGridHasMoved;
 
                 // If the origin index is different this frame; update loaded bricks.
-                if (originHasMoved || lowerGridHasMoved)
+                if (anyOriginShifted)
                 {
+                    Stopwatch.Start(ref majorUpdateTime);
+
                     // Update origin index.
                     originIndex = newOriginIndex;
                     lowerGridOffset = newLowerGridOffset;
@@ -1067,14 +1011,18 @@ namespace LevelGeneration.Terrain
                 }
 
                 // Update shapes intersecting this brickmap level.
-                if (originHasMoved || scene.IsDirty)
-                    FindIntersectingShapes(shapes, scene);
+                if (originHasMoved || scene.terrainShapes.IsDirty)
+                    FindIntersectingShapes(scene);
 
                 // Update bricks.
-                foreach (int3 brickIndex in bricks.Keys)
-                    bricks[brickIndex].Update(observerCamera, shapes, scene, originHasMoved || lowerGridHasMoved, PackNeighborLOD(brickIndex));
+                if (anyOriginShifted && levelIndex > 0)
+                    foreach (int3 brickIndex in bricks.Keys)
+                        bricks[brickIndex].UpdateNeighborLOD(PackNeighborLOD(brickIndex));
 
-                if (isMajorUpdate)
+                foreach (int3 brickIndex in bricks.Keys)
+                    bricks[brickIndex].Update(observerCamera, shapes, scene);
+
+                if (anyOriginShifted)
                     Stopwatch.End(ref majorUpdateTime);
 
                 Stopwatch.End(ref updateTime);
@@ -1092,28 +1040,26 @@ namespace LevelGeneration.Terrain
                 Stopwatch.End(ref renderTime);
             }
 
-            public void Clear()
+            public void MarkAllAsModified()
             {
-                shapes.Clear();
-
                 foreach (Brick brick in bricks.Values)
                     brick.MarkAsModified();
             }
 
-            public void MarkBoundsAsModified(float3 boundsCentre, float3 boundsVolume)
+            public void MarkBoundsAsModified(Volume bounds)
             {
-                if (math.any(boundsVolume == 0))
+                if (math.any(bounds.size == 0))
                     return;
 
-                GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, boundsCentre, boundsVolume, out int3 initialIndex, out int3 volume);
+                IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, bounds);
 
-                for (int x = 0; x < volume.x; x++)
+                for (int x = 0; x < indices.size.x; x++)
                 {
-                    for (int y = 0; y < volume.y; y++)
+                    for (int y = 0; y < indices.size.y; y++)
                     {
-                        for (int z = 0; z < volume.z; z++)
+                        for (int z = 0; z < indices.size.z; z++)
                         {
-                            int3 brickIndex = initialIndex + new int3(x, y, z);
+                            int3 brickIndex = indices.coordinate + new int3(x, y, z);
 
                             if (BrickInBounds(brickIndex) && !BrickOverlapsPreviousLevel(brickIndex))
                                 bricks[brickIndex].MarkAsModified();
@@ -1122,26 +1068,25 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            void FindIntersectingShapes(List<Shape> shapes, SDFScene scene)
+            void FindIntersectingShapes(SDFScene scene)
             {
                 // TODO: a fun optimization here; a given brickmap level only needs to test shapes for intersection that passed the check for the prior brickmap level.
                 // This sort of acts a binary chop for the shape data, cutting down on the other most expensive part of the updating loop.
 
                 shapes.Clear();
 
-                foreach (Shape shape in scene.Shapes)
+                foreach (Shape shape in scene.terrainShapes.Shapes)
                 {
                     // Get brick volume from shape.
-                    shape.ComputeVolume(out float3 boundsPosition, out float3 boundsVolume);
-                    GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, boundsPosition, boundsVolume, out int3 initialIndex, out int3 volume);
+                    IntVolume bounds = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, shape.ComputeVolume());
 
                     // Account for density data overflowing into adjacent bricks.
-                    initialIndex -= 1;
-                    volume += 2;
+                    bounds.coordinate -= 1;
+                    bounds.size += 2;
 
                     // AABB intersection logic.
-                    int3 aMax = initialIndex + volume - 1;
-                    int3 aMin = initialIndex;
+                    int3 aMax = bounds.coordinate + bounds.size - 1;
+                    int3 aMin = bounds.coordinate;
 
                     int3 bMax = originIndex + halfBrickmapSize - 1;
                     int3 bMin = originIndex - halfBrickmapSize;
@@ -1257,79 +1202,5 @@ namespace LevelGeneration.Terrain
                 return bytes;
             }
         }
-
-        class SDFScene
-        {
-            readonly List<Shape> shapes = new();
-
-            NoiseSettings surface;
-            NoiseSettings globalNoise;
-
-            public List<Shape> Shapes => shapes;
-
-            public int NumShapes => shapes.Count;
-
-            public NoiseSettings Surface => surface;
-
-            public NoiseSettings GlobalNoise => globalNoise;
-
-            public bool IsDirty;
-
-            public void AddShape(Shape shape)
-            {
-                shapes.Add(shape);
-                IsDirty = true;
-            }
-
-            public void RemoveShape(int index)
-            {
-                shapes.RemoveAt(index);
-                IsDirty = true;
-            }
-
-            public void ReplaceShape(int index, Shape shape)
-            {
-                shapes[index] = shape;
-                IsDirty = true;
-            }
-
-            public void Clear()
-            {
-                shapes.Clear();
-                IsDirty = true;
-            }
-
-            public void SetSurfaceSettings(NoiseSettings noiseSettings)
-            {
-                surface = noiseSettings;
-                IsDirty = true;
-            }
-
-            public void SetGlobalNoiseSettings(NoiseSettings noiseSettings)
-            {
-                globalNoise = noiseSettings;
-                IsDirty = true;
-            }
-        }
-    }
-
-    public readonly struct NoiseSettings
-    {
-        public readonly float3 offset;
-        public readonly float amplitude;
-        public readonly float frequency;
-        public readonly uint seed;
-
-        public NoiseSettings(float3 offset, float amplitude, float frequency, uint seed)
-        {
-            this.offset = offset;
-            this.amplitude = amplitude;
-            this.frequency = frequency;
-            this.seed = seed;
-        }
-
-        public NoiseSettings(float amplitude, float frequency, uint seed) : this(0.0f, amplitude, frequency, seed) { }
-
-        public NoiseSettings(float amplitude, float frequency) : this(0.0f, amplitude, frequency, 0) { }
     }
 }
