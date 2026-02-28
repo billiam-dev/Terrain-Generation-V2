@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -36,6 +37,7 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
         ProceduralTerrain m_Terrain;
         SDFScene m_Scene;
+        List<ShapeBrush> m_ShapeBrushes;
         bool m_Initialized;
 
         void Awake()
@@ -65,22 +67,10 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
             if (m_Initialized)
                 return;
 
+            m_ShapeBrushes = new();
             m_Scene = new();
 
-            // Init surface
-            m_Scene.surfaceNoise.Offset = new float3(0, SurfaceYPosition, 0);
-            m_Scene.surfaceNoise.Amplitude = SurfaceNoiseAmplitude;
-            m_Scene.surfaceNoise.Frequency = SurfaceNoiseFrequency;
-            m_Scene.surfaceNoise.Seed = SurfaceNoiseSeed;
-
-            // Init global noise
-            m_Scene.globalNoise.Amplitude = GlobalNoiseAmplitude;
-            m_Scene.globalNoise.Frequency = GlobalNoiseFrequency;
-            m_Scene.globalNoise.Seed = GlobalNoiseSeed;
-
-            // Init terrain shapes
-            foreach (ShapeBrush shapeBrush in GetComponentsInChildren<ShapeBrush>(false))
-                m_Scene.terrainShapes.AddShape(shapeBrush.Shape);
+            UpdateScene();
 
             m_Initialized = true;
         }
@@ -90,6 +80,10 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
             if (!m_Initialized)
                 return;
 
+            foreach (ShapeBrush shapeBrush in m_ShapeBrushes)
+                shapeBrush.OnDisabled -= OnShapeBrushDisabled;
+
+            m_ShapeBrushes = null;
             m_Scene = null;
 
             m_Initialized = false;
@@ -98,53 +92,73 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         void UpdateScene()
         {
             // Surface Noise
+            NoiseLayer surfaceNoise = m_Scene.surfaceNoise;
+
             if (EnableSurface)
             {
-                NoiseLayer surfaceNoise = m_Scene.surfaceNoise;
-
                 float3 offset = new(0, SurfaceYPosition, 0);
-                if (math.any(surfaceNoise.Offset != offset))
+                if (!surfaceNoise.Offset.Equals(offset))
                     surfaceNoise.Offset = offset;
 
-                if (surfaceNoise.Amplitude != SurfaceNoiseAmplitude)
+                if (!surfaceNoise.Amplitude.Equals(SurfaceNoiseAmplitude))
                     surfaceNoise.Amplitude = SurfaceNoiseAmplitude;
 
-                if (surfaceNoise.Frequency != SurfaceNoiseFrequency)
+                if (!surfaceNoise.Frequency.Equals(SurfaceNoiseFrequency))
                     surfaceNoise.Frequency = SurfaceNoiseFrequency;
 
-                if (surfaceNoise.Seed != SurfaceNoiseSeed)
+                if (!surfaceNoise.Seed.Equals(SurfaceNoiseSeed))
                     surfaceNoise.Seed = SurfaceNoiseSeed;
+            }
+            else
+            {
+                if (!surfaceNoise.Amplitude.Equals(0))
+                    surfaceNoise.Amplitude = 0;
             }
 
             // Global Noise
+            NoiseLayer globalNoise = m_Scene.globalNoise;
+
             if (EnableGlobalNoise)
             {
-                NoiseLayer globalNoise = m_Scene.globalNoise;
-
-                if (globalNoise.Amplitude != GlobalNoiseAmplitude)
+                if (!globalNoise.Amplitude.Equals(GlobalNoiseAmplitude))
                     globalNoise.Amplitude = GlobalNoiseAmplitude;
 
-                if (globalNoise.Frequency != GlobalNoiseFrequency)
+                if (!globalNoise.Frequency.Equals(GlobalNoiseFrequency))
                     globalNoise.Frequency = GlobalNoiseFrequency;
 
-                if (globalNoise.Seed != GlobalNoiseSeed)
+                if (!globalNoise.Seed.Equals(GlobalNoiseSeed))
                     globalNoise.Seed = GlobalNoiseSeed;
+            }
+            else
+            {
+                if (!globalNoise.Amplitude.Equals(0))
+                    globalNoise.Amplitude = 0;
             }
 
             // Terrain Shapes
-            ShapeBrush[] shapeBrushes = GetComponentsInChildren<ShapeBrush>(false);
+            ShapeBrush[] activeShapeBrushes = GetComponentsInChildren<ShapeBrush>(false);
 
-            if (shapeBrushes.Length != m_Scene.terrainShapes.Count)
+            if (activeShapeBrushes.Length != m_ShapeBrushes.Count)
             {
-                m_Scene.terrainShapes.Clear();
-
-                foreach (ShapeBrush shapeBrush in shapeBrushes)
+                foreach (ShapeBrush shapeBrush in activeShapeBrushes)
                 {
+                    if (m_ShapeBrushes.Contains(shapeBrush))
+                        continue;
+
+                    m_ShapeBrushes.Add(shapeBrush);
+                    shapeBrush.OnDisabled += OnShapeBrushDisabled;
+
                     m_Scene.terrainShapes.AddShape(shapeBrush.Shape);
                 }
             }
+        }
 
-            // Note: for removing shapes prolly just add OnDisable Action to ShapeBrush
+        void OnShapeBrushDisabled(ShapeBrush shapeBrush)
+        {
+            m_Scene.terrainShapes.RemoveShape(shapeBrush.Shape);
+            
+            shapeBrush.OnDisabled -= OnShapeBrushDisabled;
+            m_ShapeBrushes.Remove(shapeBrush);
         }
 
         public void RandomizeSeed()

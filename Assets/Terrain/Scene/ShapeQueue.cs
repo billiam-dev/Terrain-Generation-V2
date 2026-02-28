@@ -1,20 +1,19 @@
+using System;
 using System.Collections.Generic;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace LevelGeneration.Terrain.Scene
 {
     public class ShapeQueue
     {
-        readonly List<Shape> shapes;
-        readonly List<Volume> modifiedVolumes;
+        readonly List<Shape> shapes;            // Shapes to be applied in order to the terrain.
+        readonly List<Volume> modifiedVolumes;  // A list of volumes which have been modified by the shapes since the last terrain update.
+        bool isDirty;
 
         public Shape[] Shapes => shapes.ToArray();
 
-        public int Count => shapes.Count;
-
         public Volume[] ModifiedVolumes => modifiedVolumes.ToArray();
-
-        bool isDirty;
 
         public bool IsDirty
         {
@@ -38,9 +37,14 @@ namespace LevelGeneration.Terrain.Scene
         public bool AddShape(Shape shape)
         {
             if (shapes.Contains(shape))
+            {
+                Debug.LogWarning("Could add shape to shape queue, shape already in queue.");
                 return false;
+            }
 
             shapes.Add(shape);
+            shape.OnModified += ShapeModified;
+
             modifiedVolumes.Add(shape.ComputeVolume());
 
             isDirty = true;
@@ -51,14 +55,27 @@ namespace LevelGeneration.Terrain.Scene
         public bool RemoveShape(Shape shape)
         {
             if (!shapes.Contains(shape))
+            {
+                Debug.LogWarning("Could not remove shape from shape queue, shape not in queue.");
                 return false;
+            }
 
+            shape.OnModified -= ShapeModified;
             shapes.Remove(shape);
+
             modifiedVolumes.Add(shape.ComputeVolume());
 
             isDirty = true;
 
             return true;
+        }
+
+        void ShapeModified(Volume previousVolume, Volume newVolume)
+        {
+            modifiedVolumes.Add(previousVolume);
+            modifiedVolumes.Add(newVolume);
+
+            isDirty = true;
         }
 
         public void Clear()
@@ -93,9 +110,10 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
+                Volume prevVolume = ComputeVolume();
                 matrix = value;
                 inverseMatrix = math.inverse(value);
-                IsDirty = true;
+                OnModified?.Invoke(prevVolume, ComputeVolume());
             }
         }
 
@@ -115,8 +133,9 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
+                Volume prevVolume = ComputeVolume();
                 distanceFunction = value;
-                IsDirty = true;
+                OnModified?.Invoke(prevVolume, ComputeVolume());
             }
         }
 
@@ -128,8 +147,9 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
+                Volume prevVolume = ComputeVolume();
                 blendMode = value;
-                IsDirty = true;
+                OnModified?.Invoke(prevVolume, ComputeVolume());
             }
         }
 
@@ -141,12 +161,13 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
+                Volume prevVolume = ComputeVolume();
                 dimentions = value;
-                IsDirty = true;
+                OnModified?.Invoke(prevVolume, ComputeVolume());
             }
         }
 
-        public bool IsDirty;
+        public Action<Volume, Volume> OnModified;
 
         // Multiplier for how much the smoothness value should extend the brick volume effected by this shape.
         // Larger values result in a larger volume allowing for smoothing over larger distances at the expense of speed.

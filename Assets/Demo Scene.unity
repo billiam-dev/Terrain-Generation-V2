@@ -407,11 +407,11 @@ MonoBehaviour:
   SurfaceNoiseAmplitude: 70
   SurfaceNoiseFrequency: 0.001
   SurfaceYPosition: 0
-  SurfaceNoiseSeed: 623238435
+  SurfaceNoiseSeed: 0
   EnableGlobalNoise: 1
   GlobalNoiseAmplitude: 4
   GlobalNoiseFrequency: 0.02
-  GlobalNoiseSeed: 311257664
+  GlobalNoiseSeed: 0
 --- !u!1 &346887001
 GameObject:
   m_ObjectHideFlags: 0

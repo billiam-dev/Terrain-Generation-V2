@@ -220,9 +220,6 @@ namespace LevelGeneration.Terrain
             {
                 foreach (Brickmap brickmap in m_BrickmapLevels)
                     brickmap.MarkAllAsModified();
-
-                m_Scene.surfaceNoise.IsDirty = false;
-                m_Scene.globalNoise.IsDirty = false;
             }
 
             if (m_Scene.terrainShapes.IsDirty)
@@ -232,12 +229,13 @@ namespace LevelGeneration.Terrain
                     foreach (Brickmap brickmap in m_BrickmapLevels)
                         brickmap.MarkBoundsAsModified(volume);
                 }
-
-                m_Scene.terrainShapes.IsDirty = false;
             }
 
             // Update brickmap levels.
             float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
+
+            // TODO: I would really like not to have to pass the scene this deep.
+            // Then the IsDirty flags can be disabled above and we have better encapsulation.
 
             m_BrickmapLevels[0].Update(camera, observerPosition, 0, m_Scene);
             for (int i = 1; i < k_NumBrickmapLevels; i++)
@@ -256,6 +254,10 @@ namespace LevelGeneration.Terrain
                 Stopwatch.End(ref m_TotalMeshingTime);
                 m_AvgMeshingTime.AddTime(m_TotalMeshingTime / m_TotalMeshingTasks);
             }
+
+            m_Scene.surfaceNoise.IsDirty = false;
+            m_Scene.globalNoise.IsDirty = false;
+            m_Scene.terrainShapes.IsDirty = false;
 
             Stopwatch.End(ref m_UpdateTime);
         }
@@ -963,22 +965,24 @@ namespace LevelGeneration.Terrain
                 bool originHasMoved = math.any(newOriginIndex != originIndex);
                 bool lowerGridHasMoved = math.any(newLowerGridOffset != lowerGridOffset);
 
-                bool anyOriginShifted = originHasMoved || lowerGridHasMoved;
-
-                // If the origin index is different this frame; update loaded bricks.
-                if (anyOriginShifted)
-                {
+                bool isMajorUpdate = originHasMoved || lowerGridHasMoved;
+                if (isMajorUpdate)
                     Stopwatch.Start(ref majorUpdateTime);
 
+                // If the origin index is different this frame; update loaded bricks.
+                if (originHasMoved || lowerGridHasMoved)
+                {
                     // Update origin index.
                     originIndex = newOriginIndex;
                     lowerGridOffset = newLowerGridOffset;
 
-                    // Copy brick map keys.
+                    //
+                    // Remove out of bounds entries (loop through existing entries).
+                    //
+
                     int3[] bricksCopy = new int3[bricks.Keys.Count];
                     bricks.Keys.CopyTo(bricksCopy, 0);
 
-                    // Remove out of bounds entries (loop through existing entries).
                     foreach (int3 brickIndex in bricksCopy)
                     {
                         if (!BrickInBounds(brickIndex) || BrickOverlapsPreviousLevel(brickIndex))
@@ -987,8 +991,11 @@ namespace LevelGeneration.Terrain
                             bricks.Remove(brickIndex);
                         }
                     }
-
+                    
+                    //
                     // Add in bounds entries (loop through intended entry indices).
+                    //
+
                     for (int x = 0; x < brickmapSize; x++)
                     {
                         for (int y = 0; y < brickmapSize; y++)
@@ -1008,21 +1015,27 @@ namespace LevelGeneration.Terrain
                             }
                         }
                     }
+
+                    //
+                    // Update neighbor LOD data.
+                    //
+
+                    if (levelIndex > 0)
+                    {
+                        foreach (int3 brickIndex in bricks.Keys)
+                            bricks[brickIndex].UpdateNeighborLOD(PackNeighborLOD(brickIndex));
+                    }
                 }
 
                 // Update shapes intersecting this brickmap level.
                 if (originHasMoved || scene.terrainShapes.IsDirty)
                     FindIntersectingShapes(scene);
 
-                // Update bricks.
-                if (anyOriginShifted && levelIndex > 0)
-                    foreach (int3 brickIndex in bricks.Keys)
-                        bricks[brickIndex].UpdateNeighborLOD(PackNeighborLOD(brickIndex));
+                // Update all bricks.
+                foreach (Brick brick in bricks.Values)
+                    brick.Update(observerCamera, shapes, scene);
 
-                foreach (int3 brickIndex in bricks.Keys)
-                    bricks[brickIndex].Update(observerCamera, shapes, scene);
-
-                if (anyOriginShifted)
+                if (isMajorUpdate)
                     Stopwatch.End(ref majorUpdateTime);
 
                 Stopwatch.End(ref updateTime);
@@ -1052,15 +1065,17 @@ namespace LevelGeneration.Terrain
                     return;
 
                 IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, bounds);
+                int3 size = indices.size;
+                int3 initialIndex = indices.coordinate;
 
-                for (int x = 0; x < indices.size.x; x++)
+                for (int x = 0; x < size.x; x++)
                 {
-                    for (int y = 0; y < indices.size.y; y++)
+                    for (int y = 0; y < size.y; y++)
                     {
-                        for (int z = 0; z < indices.size.z; z++)
+                        for (int z = 0; z < size.z; z++)
                         {
-                            int3 brickIndex = indices.coordinate + new int3(x, y, z);
-
+                            int3 brickIndex = initialIndex + new int3(x, y, z);
+                            
                             if (BrickInBounds(brickIndex) && !BrickOverlapsPreviousLevel(brickIndex))
                                 bricks[brickIndex].MarkAsModified();
                         }

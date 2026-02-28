@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEngine;
 
 using LevelGeneration.Terrain.Scene;
+using System;
 
 namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 {
@@ -25,7 +26,7 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         [SerializeField, Min(0.0f)]
         float m_Dimention3 = 4.0f;
 
-        bool m_PropertyChanged;
+        bool m_PropertyChanged; // Flag set by OnValidate or visual editor to notify this object that it has been changed.
 
         Shape m_Shape;
 
@@ -41,10 +42,18 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
                     m_BlendMode,
                     m_Dimention1,
                     m_Dimention2,
-                    m_Dimention3);
+                    m_Dimention3
+                    );
 
                 return m_Shape;
             }
+        }
+
+        public Action<ShapeBrush> OnDisabled;
+
+        void OnDisable()
+        {
+            OnDisabled?.Invoke(this);
         }
 
         void Update()
@@ -54,6 +63,7 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
         void UpdateUnderlyingShape()
         {
+            // Evaluate transform.
             if (transform.hasChanged)
             {
                 AffineTransform matrix = new(transform.position, transform.rotation, transform.lossyScale);
@@ -63,6 +73,7 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
                 transform.hasChanged = false;
             }
 
+            // Evaluate distance function properties.
             if (m_PropertyChanged)
             {
                 if (!m_Shape.DistanceFunction.Equals(m_DistanceFunction))

@@ -6,14 +6,12 @@ namespace LevelGeneration.Terrain.Scene
     public class SDFScene
     {
         public readonly ShapeQueue terrainShapes;
-        public readonly ShapeQueue csgShapes;
         public readonly NoiseLayer surfaceNoise;
         public readonly NoiseLayer globalNoise;
 
         public SDFScene()
         {
             terrainShapes = new();
-            csgShapes = new();
             surfaceNoise = new();
             globalNoise = new();
         }
@@ -21,7 +19,6 @@ namespace LevelGeneration.Terrain.Scene
         public void Clear()
         {
             terrainShapes.Clear();
-            csgShapes.Clear();
             surfaceNoise.Clear();
             globalNoise.Clear();
         }

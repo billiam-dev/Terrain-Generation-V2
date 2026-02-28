@@ -152,7 +152,7 @@ namespace LevelGeneration.Terrain.SDF
         public readonly float SampleSurface(float3 worldPosition, float density)
         {
             // TODO: seed
-            return density + Surface(worldPosition + m_SurfaceNoise.offset, m_SurfaceNoise.frequency, m_SurfaceNoise.amplitude);
+            return density + Surface(worldPosition - m_SurfaceNoise.offset, m_SurfaceNoise.frequency, m_SurfaceNoise.amplitude);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
