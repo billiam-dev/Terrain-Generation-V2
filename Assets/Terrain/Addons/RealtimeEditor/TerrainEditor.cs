@@ -34,19 +34,17 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         public float GlobalNoiseAmplitude = 4.0f;
         public float GlobalNoiseFrequency = 0.02f;
         public int GlobalNoiseSeed = 0;
-
+        
         ProceduralTerrain m_Terrain;
         SDFScene m_Scene;
         List<ShapeBrush> m_ShapeBrushes;
         bool m_Initialized;
 
-        void Awake()
-        {
-            m_Terrain = GetComponent<ProceduralTerrain>();
-        }
-
         void OnEnable()
         {
+            if (!m_Terrain)
+                m_Terrain = GetComponent<ProceduralTerrain>();
+
             Initialize();
             m_Terrain.LoadScene(m_Scene);
         }

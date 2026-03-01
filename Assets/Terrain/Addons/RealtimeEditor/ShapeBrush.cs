@@ -51,6 +51,20 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
         public Action<ShapeBrush> OnDisabled;
 
+        void OnEnable()
+        {
+            m_Shape ??= new(
+                transform.position,
+                transform.rotation,
+                transform.lossyScale,
+                m_DistanceFunction,
+                m_BlendMode,
+                m_Dimention1,
+                m_Dimention2,
+                m_Dimention3
+                );
+        }
+
         void OnDisable()
         {
             OnDisabled?.Invoke(this);

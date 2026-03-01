@@ -163,7 +163,7 @@ Shader "Terrain"
                 surfaceData.smoothness = 0;
                 surfaceData.specular = 0;
 
-                half4 litColor = UniversalFragmentPBR(inputData, surfaceData);// + unity_AmbientSky;
+                half4 litColor = UniversalFragmentPBR(inputData, surfaceData);
 
                 return litColor * (_ClipmapDebugColor + 0.5) * (_TransitionDebugColor + 1.0);
             }

@@ -10,12 +10,21 @@ namespace LevelGeneration.Terrain.Meshing
     /// </summary>
     public class BatchChunkMesher : IDisposable
     {
-        ChunkMesher[] m_MesherPool;    // The pool of individually allocated ChunkMeshers capable of running meshing JOBs independently.
-        List<MeshingTask> m_TaskQueue; // The list of meshing tasks that have been queued by the user.
+        const int k_PoolSize = 16;      // The size of the ChunkMesher pool.
+
+        ChunkMesher[] m_MesherPool;     // The pool of individually allocated ChunkMeshers capable of running meshing JOBs independently.
+        List<MeshingTask> m_TaskQueue;  // The list of meshing tasks that have been queued by the user.
 
         public int NumPendingTasks => m_TaskQueue.Count;
 
-        const int k_PoolSize = 16;
+        // Debug info
+        MeanTime m_AvgExecutionTime;
+        double m_ExecutionTime;
+        int m_NumTasksCompleted;
+
+        public double TotalExecutionTime => m_ExecutionTime;
+        public double AvgExecutionTime => m_AvgExecutionTime.Avarage();
+        public int NumTasksCompleted => m_NumTasksCompleted;
 
         public void Allocate()
         {
@@ -28,6 +37,7 @@ namespace LevelGeneration.Terrain.Meshing
             }
 
             m_TaskQueue = new();
+            m_AvgExecutionTime = new();
         }
 
         public void Dispose()
@@ -36,6 +46,7 @@ namespace LevelGeneration.Terrain.Meshing
                 mesher.Dispose();
 
             m_TaskQueue = null;
+            m_AvgExecutionTime = null;
         }
 
         /// <summary>
@@ -63,12 +74,40 @@ namespace LevelGeneration.Terrain.Meshing
         /// <summary>
         /// Execute as many pending tasks as there are meshers in the pool.
         /// </summary>
-        public void ExecutePendingTasks()
+        public void ExecutePendingTasksLimited()
+        {
+            Stopwatch.Start(ref m_ExecutionTime);
+
+            m_NumTasksCompleted = ScheduleAndCompleteTaskPool();
+
+            Stopwatch.End(ref m_ExecutionTime);
+            m_AvgExecutionTime.AddTime(m_ExecutionTime / m_NumTasksCompleted);
+        }
+
+        /// <summary>
+        /// Continually execute tasks in the queue until there are none left.
+        /// This may result in frame drops if there are a large number of tasks in the queue.
+        /// </summary>
+        public void ExecutePendingTasksContinuous()
+        {
+            Stopwatch.Start(ref m_ExecutionTime);
+
+            m_NumTasksCompleted = 0;
+
+            while (m_TaskQueue.Count > 0)
+                m_NumTasksCompleted += ScheduleAndCompleteTaskPool();
+
+            Stopwatch.End(ref m_ExecutionTime);
+            m_AvgExecutionTime.AddTime(m_ExecutionTime / m_NumTasksCompleted);
+        }
+
+        // Returns the number of tasks completed.
+        int ScheduleAndCompleteTaskPool()
         {
             int numTasks = m_TaskQueue.Count;
 
             if (numTasks == 0)
-                return;
+                return 0;
 
             List<RemeshTask> remeshTasks = new();
             int mesherIndex = 0;
@@ -111,16 +150,8 @@ namespace LevelGeneration.Terrain.Meshing
             // Clean up active meshing JOBs.
             for (int i = 0; i < remeshTasks.Count; i++)
                 m_MesherPool[remeshTasks[i].mesherIndex].CompleteTask();
-        }
 
-        /// <summary>
-        /// Continually execute tasks in the queue until there are none left.
-        /// This may result in frame drops if there are a large number of tasks in the queue.
-        /// </summary>
-        public void ExecutePendingTasksContinuous()
-        {
-            while (m_TaskQueue.Count > 0)
-                ExecutePendingTasks();
+            return numTasksQueued;
         }
 
         readonly struct RemeshTask

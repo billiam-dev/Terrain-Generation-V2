@@ -32,19 +32,19 @@ namespace LevelGeneration.Terrain
             rect.y += k_SingleLineHeight * 2.0f;
 
             // Brickmaps update time
-            GUI.Label(rect, $"Avg density eval time: {Stopwatch.ToMilliseconds(m_AvgDensityEvalTime.Avarage())}ms");
+            GUI.Label(rect, $"Avg density eval time: {Stopwatch.ToMilliseconds(m_DensityEvaluator.AvgExecutionTime)}ms");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Completed: {m_TotalMeshingTasks} meshing tasks in {Stopwatch.ToMilliseconds(m_TotalMeshingTime)}ms");
+            GUI.Label(rect, $"Completed: {m_Mesher.NumTasksCompleted} meshing tasks in {Stopwatch.ToMilliseconds(m_Mesher.TotalExecutionTime)}ms");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"   (avg: {Stopwatch.ToMilliseconds(m_AvgMeshingTime.Avarage())}ms)");
+            GUI.Label(rect, $"   (avg: {Stopwatch.ToMilliseconds(m_Mesher.AvgExecutionTime)}ms)");
             rect.y += k_SingleLineHeight;
             GUI.Label(rect, $"Total update time: {Stopwatch.ToMilliseconds(m_UpdateTime)}ms");
             rect.y += k_SingleLineHeight * 2.0f;
 
             // Brickmaps rendering time
-            GUI.Label(rect, $"Total vertices: {m_DrawingVertices}");
+            GUI.Label(rect, $"Total vertices: {s_VertexCount}");
             rect.y += k_SingleLineHeight;
-            GUI.Label(rect, $"Total indices: {m_DrawingIndices}");
+            GUI.Label(rect, $"Total indices: {s_IndexCount}");
             rect.y += k_SingleLineHeight;
             GUI.Label(rect, $"Total Render time: {Stopwatch.ToMilliseconds(m_RenderTime)}ms");
             rect.y += k_SingleLineHeight * 2.0f;

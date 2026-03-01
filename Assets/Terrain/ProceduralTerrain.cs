@@ -16,6 +16,7 @@ using UnityEditor;
 
 namespace LevelGeneration.Terrain
 {
+    [ExecuteInEditMode]
     [DisallowMultipleComponent]
     public partial class ProceduralTerrain : MonoBehaviour
     {
@@ -61,8 +62,7 @@ namespace LevelGeneration.Terrain
             set;
         }
 
-        static ProceduralTerrain s_Instance;
-
+        SDFScene m_Scene;
         Brickmap[] m_BrickmapLevels;
         MaterialPropertyBlock m_MaterialProperties;
 
@@ -71,15 +71,9 @@ namespace LevelGeneration.Terrain
 
         bool m_Initialized;
 
-        SDFScene m_Scene;
-
         // Debug info
-        MeanTime m_AvgDensityEvalTime;
-        MeanTime m_AvgMeshingTime;
-        uint m_DrawingVertices;
-        uint m_DrawingIndices;
-        double m_TotalMeshingTime;
-        int m_TotalMeshingTasks;
+        static uint s_VertexCount; // TODO: make not static
+        static uint s_IndexCount;
         double m_UpdateTime;
         double m_RenderTime;
 
@@ -93,6 +87,32 @@ namespace LevelGeneration.Terrain
         /// Does not apply to the CSG shapes users apply by mining or building upon the terrain.
         /// </summary>
         public const float Smoothness = 6.0f;
+
+        void OnEnable()
+        {
+            if (m_Initialized)
+                return;
+
+            Initialize();
+
+            RenderPipelineManager.beginCameraRendering += RenderTerrain;
+#if UNITY_EDITOR
+            EditorApplication.update += UpdateTerrain;
+#endif
+        }
+
+        void OnDisable()
+        {
+            if (!m_Initialized)
+                return;
+
+            RenderPipelineManager.beginCameraRendering -= RenderTerrain;
+#if UNITY_EDITOR
+            EditorApplication.update -= UpdateTerrain;
+#endif
+
+            Dispose();
+        }
 
 #if !UNITY_EDITOR
         void Update()
@@ -123,42 +143,6 @@ namespace LevelGeneration.Terrain
             DisplayDebugGUI();
         }
 
-        void TryInitializeAsInstance()
-        {
-            if (m_Initialized)
-                return;
-
-            if (s_Instance != null)
-            {
-                Debug.LogWarning($"Could not initialize {name}, only one ProceduralTerrain may exist in the scene.");
-                return;
-            }
-
-            s_Instance = this;
-
-            Initialize();
-
-            RenderPipelineManager.beginCameraRendering += RenderTerrain;
-#if UNITY_EDITOR
-            EditorApplication.update += UpdateTerrain;
-#endif
-        }
-
-        void TryDisposeInstance()
-        {
-            if (!m_Initialized)
-                return;
-
-            s_Instance = null;
-
-            RenderPipelineManager.beginCameraRendering -= RenderTerrain;
-#if UNITY_EDITOR
-            EditorApplication.update -= UpdateTerrain;
-#endif
-
-            Dispose();
-        }
-
         void Initialize()
         {
             m_BrickmapLevels = new Brickmap[k_NumBrickmapLevels];
@@ -166,9 +150,6 @@ namespace LevelGeneration.Terrain
 
             m_DensityEvaluator = new();
             m_Mesher = new();
-
-            m_AvgDensityEvalTime = new();
-            m_AvgMeshingTime = new();
 
             m_DensityEvaluator.Allocate(k_BrickSize);
             m_Mesher.Allocate();
@@ -192,9 +173,6 @@ namespace LevelGeneration.Terrain
 
             m_DensityEvaluator = null;
             m_Mesher = null;
-
-            m_AvgDensityEvalTime = null;
-            m_AvgMeshingTime = null;
 
             m_Initialized = false;
         }
@@ -237,23 +215,13 @@ namespace LevelGeneration.Terrain
             // TODO: I would really like not to have to pass the scene this deep.
             // Then the IsDirty flags can be disabled above and we have better encapsulation.
 
-            m_BrickmapLevels[0].Update(camera, observerPosition, 0, m_Scene);
+            m_BrickmapLevels[0].Update(camera, observerPosition, 0, m_Scene, m_DensityEvaluator, m_Mesher);
             for (int i = 1; i < k_NumBrickmapLevels; i++)
-                m_BrickmapLevels[i].Update(camera, observerPosition, m_BrickmapLevels[i - 1].OriginIndex, m_Scene);
+                m_BrickmapLevels[i].Update(camera, observerPosition, m_BrickmapLevels[i - 1].OriginIndex, m_Scene, m_DensityEvaluator, m_Mesher);
 
             // Execute meshing tasks queued this frame.
-            int pendingTasks = m_Mesher.NumPendingTasks;
-            if (pendingTasks > 0)
-            {
-                m_TotalMeshingTasks = pendingTasks;
-
-                Stopwatch.Start(ref m_TotalMeshingTime);
-
+            if (m_Mesher.NumPendingTasks > 0)
                 m_Mesher.ExecutePendingTasksContinuous();
-
-                Stopwatch.End(ref m_TotalMeshingTime);
-                m_AvgMeshingTime.AddTime(m_TotalMeshingTime / m_TotalMeshingTasks);
-            }
 
             m_Scene.surfaceNoise.IsDirty = false;
             m_Scene.globalNoise.IsDirty = false;
@@ -267,8 +235,8 @@ namespace LevelGeneration.Terrain
             if (m_Scene == null)
                 return;
 
-            m_DrawingVertices = 0;
-            m_DrawingIndices = 0;
+            s_VertexCount = 0;
+            s_IndexCount = 0;
 
             Stopwatch.Start(ref m_RenderTime);
 
@@ -284,10 +252,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public void LoadScene(SDFScene scene)
         {
-            TryInitializeAsInstance();
-
-            if (s_Instance == this)
-                m_Scene = scene;
+            m_Scene = scene;
         }
 
         /// <summary>
@@ -295,10 +260,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public void UnloadScene()
         {
-            TryDisposeInstance();
-
-            if (s_Instance == this)
-                m_Scene = null;
+            m_Scene = null;
         }
 
         /// <summary>
@@ -560,9 +522,9 @@ namespace LevelGeneration.Terrain
                         isAllocated = false;
                     }
 
-                    public void RemeshCore(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr)
+                    public void RemeshCore(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr, BatchChunkMesher mesher)
                     {
-                        s_Instance.m_Mesher.QueueRemeshTask(new MeshingTask(
+                        mesher.QueueRemeshTask(new MeshingTask(
                             coreMesh,
                             index,
                             size,
@@ -572,9 +534,9 @@ namespace LevelGeneration.Terrain
                         ));
                     }
 
-                    public void RemeshTransition(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr, int transitionIndex)
+                    public void RemeshTransition(int3 index, int size, int levelScale, float worldScale, IntPtr densityPtr, int transitionIndex, BatchChunkMesher mesher)
                     {
-                        s_Instance.m_Mesher.QueueRemeshTask(new MeshingTask(
+                        mesher.QueueRemeshTask(new MeshingTask(
                             transitionMesh,
                             index,
                             size,
@@ -610,8 +572,8 @@ namespace LevelGeneration.Terrain
 
                         Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb);
 
-                        s_Instance.m_DrawingVertices += (uint)mesh.vertexCount;
-                        s_Instance.m_DrawingIndices += mesh.GetIndexCount(0);
+                        s_VertexCount += (uint)mesh.vertexCount;
+                        s_IndexCount += mesh.GetIndexCount(0);
                     }
 
                     public int MemoryUsageBytes()
@@ -686,7 +648,7 @@ namespace LevelGeneration.Terrain
                         renderer.Dispose();
                 }
 
-                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene)
+                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
                 {
                     // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
@@ -730,11 +692,7 @@ namespace LevelGeneration.Terrain
                         else
                         {
                             // Evaluate the core density function.
-                            double t = 0.0;
-                            Stopwatch.Start(ref t);
-                            DensityEvaluationResult result = s_Instance.m_DensityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
-                            Stopwatch.End(ref t);
-                            s_Instance.m_AvgDensityEvalTime.AddTime(t);
+                            DensityEvaluationResult result = densityEvaluator.ComputeCore(densitySampler, index, size, levelScale, worldScale);
 
                             // If the result is not uniform, continue to recompute the mesh.
                             // Else, if this brick is not already uniform, ensure it is disposed.
@@ -751,7 +709,7 @@ namespace LevelGeneration.Terrain
                                 if (!renderer.IsAllocated)
                                     renderer.Allocate(worldSize, levelScale > 1);
 
-                                renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.CoreDensityPointer);
+                                renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.CoreDensityPointer, mesher);
                             }
                             else if (!isUniformState)
                             {
@@ -779,11 +737,11 @@ namespace LevelGeneration.Terrain
                                 if ((neighborLOD & (1 << i)) != 0)
                                 {
                                     // Evaluate transition density with selected transition index and copy the result.
-                                    DensityEvaluationResult result = s_Instance.m_DensityEvaluator.ComputeTransition(densitySampler, index, size, levelScale, worldScale, i);
+                                    DensityEvaluationResult result = densityEvaluator.ComputeTransition(densitySampler, index, size, levelScale, worldScale, i);
                                     densityCache.CopyTransitionDensity(result.density);
 
                                     // Remesh transition mesh with selected transition index.
-                                    renderer.RemeshTransition(index, size, levelScale, worldScale, densityCache.TransitionDensityPointer, i);
+                                    renderer.RemeshTransition(index, size, levelScale, worldScale, densityCache.TransitionDensityPointer, i, mesher);
 
                                     break;
                                 }
@@ -940,9 +898,6 @@ namespace LevelGeneration.Terrain
 
                 originIndex = int.MaxValue;
                 lowerGridOffset = 0;
-
-                s_Instance.m_AvgDensityEvalTime = new();
-                s_Instance.m_AvgMeshingTime = new();
             }
 
             public void Dispose()
@@ -954,7 +909,7 @@ namespace LevelGeneration.Terrain
                 shapes.Clear();
             }
 
-            public void Update(Camera observerCamera, float3 observerPosition, int3 lowerGridOriginIndex, SDFScene scene)
+            public void Update(Camera observerCamera, float3 observerPosition, int3 lowerGridOriginIndex, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
             {
                 Stopwatch.Start(ref updateTime);
 
@@ -1033,7 +988,7 @@ namespace LevelGeneration.Terrain
 
                 // Update all bricks.
                 foreach (Brick brick in bricks.Values)
-                    brick.Update(observerCamera, shapes, scene);
+                    brick.Update(observerCamera, shapes, scene, densityEvaluator, mesher);
 
                 if (isMajorUpdate)
                     Stopwatch.End(ref majorUpdateTime);

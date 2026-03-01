@@ -17,10 +17,15 @@ namespace LevelGeneration.Terrain.SDF
 
         NativeReference<bool> m_PositiveValueFound;
         NativeReference<bool> m_NegativeValueFound;
-        
-        double m_ExecutionTime;
 
         const int k_InnerloopBatchCount = 32;
+
+        // Debug info
+        MeanTime m_AvgExecutionTime;
+        double m_ExecutionTime;
+
+        public double TotalExecutionTime => m_ExecutionTime;
+        public double AvgExecutionTime => m_AvgExecutionTime.Avarage();
 
         public void Allocate(int brickSize)
         {
@@ -35,6 +40,8 @@ namespace LevelGeneration.Terrain.SDF
 
             m_PositiveValueFound = new(Allocator.Persistent);
             m_NegativeValueFound = new(Allocator.Persistent);
+
+            m_AvgExecutionTime = new();
         }
 
         public void Dispose()
@@ -44,6 +51,8 @@ namespace LevelGeneration.Terrain.SDF
 
             m_PositiveValueFound.Dispose();
             m_NegativeValueFound.Dispose();
+
+            m_AvgExecutionTime = null;
         }
 
         public DensityEvaluationResult ComputeCore(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale)
@@ -67,13 +76,16 @@ namespace LevelGeneration.Terrain.SDF
             };
 
             Stopwatch.Start(ref m_ExecutionTime);
+            
             job.ScheduleParallel(m_DensityArraySize, k_InnerloopBatchCount, default).Complete();
+            
             Stopwatch.End(ref m_ExecutionTime);
+            m_AvgExecutionTime.AddTime(m_ExecutionTime);
 
             bool isEmpty = m_PositiveValueFound.Value && !m_NegativeValueFound.Value;
             bool isFull = m_NegativeValueFound.Value && !m_PositiveValueFound.Value;
 
-            return new DensityEvaluationResult(m_DensityData, isEmpty || isFull, m_ExecutionTime);
+            return new DensityEvaluationResult(m_DensityData, isEmpty || isFull);
         }
 
         public DensityEvaluationResult ComputeTransition(DensitySampler sampler, int3 brickIndex, int brickSize, int levelScale, float worldScale, int transitionIndex)
@@ -94,10 +106,13 @@ namespace LevelGeneration.Terrain.SDF
             };
 
             Stopwatch.Start(ref m_ExecutionTime);
-            job.ScheduleParallel(m_TransitionDensityArraySize, k_InnerloopBatchCount, default).Complete();
-            Stopwatch.End(ref m_ExecutionTime);
 
-            return new DensityEvaluationResult(m_TransitionDensityData, false, m_ExecutionTime);
+            job.ScheduleParallel(m_TransitionDensityArraySize, k_InnerloopBatchCount, default).Complete();
+            
+            Stopwatch.End(ref m_ExecutionTime);
+            m_AvgExecutionTime.AddTime(m_ExecutionTime);
+
+            return new DensityEvaluationResult(m_TransitionDensityData, false);
         }
 
         // Note: [FloatMode = FloatMode.Fast] is potentially sketchy for these Jobs.
@@ -225,13 +240,11 @@ namespace LevelGeneration.Terrain.SDF
     {
         public readonly NativeArray<float> density;
         public readonly bool isUniformState;
-        public readonly double executionTime;
 
-        public DensityEvaluationResult(NativeArray<float> density, bool isUniformState, double executionTime)
+        public DensityEvaluationResult(NativeArray<float> density, bool isUniformState)
         {
             this.density = density;
             this.isUniformState = isUniformState;
-            this.executionTime = executionTime;
         }
     }
 }

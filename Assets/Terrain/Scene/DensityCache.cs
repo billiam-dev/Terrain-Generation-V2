@@ -1,6 +1,5 @@
 namespace LevelGeneration.Terrain.Scene
 {
-    /*
     public class DensityCache
     {
         // TODO
@@ -10,5 +9,4 @@ namespace LevelGeneration.Terrain.Scene
 
         }
     }
-    */
 }

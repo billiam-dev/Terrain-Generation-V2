@@ -20,13 +20,11 @@ namespace LevelGeneration.Terrain.Addons.Tests
         ProceduralTerrain m_Terrain;
         SDFScene m_Scene;
 
-        void Awake()
-        {
-            m_Terrain = GetComponent<ProceduralTerrain>();
-        }
-
         void OnEnable()
         {
+            if (!m_Terrain)
+                m_Terrain = GetComponent<ProceduralTerrain>();
+
             m_Scene = new();
             m_Terrain.LoadScene(m_Scene);
 
