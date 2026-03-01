@@ -82,11 +82,12 @@ namespace LevelGeneration.Terrain
         const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
         const int k_NumBrickmapLevels = 5;    // The number of brickmap levels, each doubling the grid size of the previous level.
 
-        /// <summary>
-        /// The amount of blending applied between terrain-forming shapes.
-        /// Does not apply to the CSG shapes users apply by mining or building upon the terrain.
-        /// </summary>
+        // The amount of blending applied between terrain-forming shapes.
+        // Does not apply to the CSG shapes users apply by mining or building upon the terrain.
         public const float Smoothness = 6.0f;
+
+        // The maximum number of steps the FindSurface function will take to find the terrain surface.
+        const int k_MaxRaymarchSteps = 50;
 
         void OnEnable()
         {
@@ -286,8 +287,9 @@ namespace LevelGeneration.Terrain
 
         /// <summary>
         /// Raytraces the terrain to find the surface position.
+        /// Returns a structure containing the hit position and its distance to the terrain.
         /// </summary>
-        public float3 FindSurface(float3 positionWS, float3 direction, float minDistance = 0.1f)
+        public RaymarchResult FindSurface(float3 positionWS, float3 direction, float minDistance = 0.1f)
         {
             // Ensure direction is normalized.
             direction = math.normalize(direction);
@@ -301,17 +303,58 @@ namespace LevelGeneration.Terrain
 
             // Step forward by the sampled distance value until we are acceptably close to the surface.
             float distance = sampler.Sample(positionWS);
-            while (distance > minDistance)
+
+            int step = 0;
+            while (distance > minDistance && step < k_MaxRaymarchSteps)
             {
                 positionWS += direction * distance;
                 distance = sampler.Sample(positionWS);
+                step++;
             }
 
             // Dispose the sampler.
             sampler.Dispose();
 
             // Re-scale and return the position.
-            return positionWS * k_WorldScale;
+            return new RaymarchResult(positionWS * k_WorldScale, distance);
+        }
+
+        /// <summary>
+        /// Raytraces the terrain to find the surface position.
+        /// Returns a list of visited positions and their distances to the terrain.
+        /// </summary>
+        public List<RaymarchResult> FindSurfaceWithSteps(float3 positionWS, float3 direction, float minDistance = 0.1f)
+        {
+            List<RaymarchResult> positions = new(); 
+
+            // Ensure direction is normalized.
+            direction = math.normalize(direction);
+
+            // Scale origin position by world scale.
+            positionWS *= 1.0f / k_WorldScale;
+
+            // Allocate a temporary density sampler.
+            DensitySampler sampler = new();
+            sampler.Allocate(m_Scene.terrainShapes.Shapes, m_Scene.surfaceNoise, m_Scene.globalNoise, Allocator.Temp);
+
+            // Step forward by the sampled distance value until we are acceptably close to the surface.
+            float distance = sampler.Sample(positionWS);
+            positions.Add(new RaymarchResult(positionWS * k_WorldScale, distance));
+
+            int step = 0;
+            while (distance > minDistance && step < k_MaxRaymarchSteps)
+            {
+                positionWS += direction * distance;
+                distance = sampler.Sample(positionWS);
+                positions.Add(new RaymarchResult(positionWS * k_WorldScale, distance));
+                step++;
+            }
+
+            // Dispose the sampler.
+            sampler.Dispose();
+
+            // Re-scale and return the position.
+            return positions;
         }
 
         /// <summary>
@@ -1171,6 +1214,18 @@ namespace LevelGeneration.Terrain
 
                 return bytes;
             }
+        }
+    }
+
+    public readonly struct RaymarchResult
+    {
+        public readonly float3 position;
+        public readonly float distance;
+
+        public RaymarchResult(float3 position, float distance)
+        {
+            this.position = position;
+            this.distance = distance;
         }
     }
 }
