@@ -1,0 +1,18 @@
+{
+    "name": "TerrainSystem.Editor",
+    "rootNamespace": "TerrainSystem",
+    "references": [
+        "GUID:4755876e1aaec2545a04eae2f0a0a436",
+        "GUID:3eae0364be2026648bf74846acb8a731",
+        "GUID:54cb1906aeb4e4264bc1d2aa3818a43f"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
