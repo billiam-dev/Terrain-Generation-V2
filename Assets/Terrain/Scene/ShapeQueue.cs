@@ -15,6 +15,8 @@ namespace LevelGeneration.Terrain.Scene
 
         public Shape[] Shapes => shapes.ToArray();
 
+        public int Count => shapes.Count;
+
         public Volume[] ModifiedVolumes => modifiedVolumes.ToArray();
 
         bool isDirty;
@@ -28,21 +30,6 @@ namespace LevelGeneration.Terrain.Scene
             set
             {
                 isDirty = value;
-            }
-        }
-
-        bool isEnabled;
-
-        public bool IsEnabled
-        {
-            get
-            {
-                return isEnabled;
-            }
-            set
-            {
-                isEnabled = value;
-                isDirty = true;
             }
         }
 
@@ -106,7 +93,11 @@ namespace LevelGeneration.Terrain.Scene
             if (shapes.Count == 0)
                 return;
 
+            foreach (Shape shape in shapes)
+                modifiedVolumes.Add(shape.Volume);
+            
             shapes.Clear();
+
             isDirty = true;
         }
 

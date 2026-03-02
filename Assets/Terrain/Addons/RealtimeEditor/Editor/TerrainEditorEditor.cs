@@ -8,10 +8,11 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
     public class TerrainEditorEditor : Editor
     {
         // Properties
+        SerializedProperty m_InitialDensity;
+
         SerializedProperty m_EnableSurface;
         SerializedProperty m_SurfaceNoiseAmplitude;
         SerializedProperty m_SurfaceNoiseFrequency;
-        SerializedProperty m_SurfaceYPosition;
         SerializedProperty m_SurfaceNoiseSeed;
 
         SerializedProperty m_EnableGlobalNoise;
@@ -22,10 +23,11 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         SerializedProperty m_EnableTerrainShapes;
 
         // GUI Contents
+        GUIContent m_InitialDensityGUI;
+
         GUIContent m_EnableSurfaceGUI;
         GUIContent m_SurfaceNoiseAmplitudeGUI;
         GUIContent m_SurfaceNoiseFrequencyGUI;
-        GUIContent m_SurfaceYPositionGUI;
         GUIContent m_SurfaceSeedGUI;
 
         GUIContent m_EnableGlobalNoiseGUI;
@@ -41,10 +43,11 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         {
             var o = new PropertyFetcher<TerrainEditor>(serializedObject);
 
+            m_InitialDensity = o.Find(x => x.InitialDensity);
+
             m_EnableSurface = o.Find(x => x.EnableSurface);
             m_SurfaceNoiseAmplitude = o.Find(x => x.SurfaceNoiseAmplitude);
             m_SurfaceNoiseFrequency = o.Find(x => x.SurfaceNoiseFrequency);
-            m_SurfaceYPosition = o.Find(x => x.SurfaceYPosition);
             m_SurfaceNoiseSeed = o.Find(x => x.SurfaceNoiseSeed);
 
             m_EnableGlobalNoise = o.Find(x => x.EnableGlobalNoise);
@@ -54,10 +57,11 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
             m_EnableTerrainShapes = o.Find(x => x.EnableTerrainShapes);
 
+            m_InitialDensityGUI = new GUIContent("Initial Value");
+
             m_EnableSurfaceGUI = new GUIContent("Enable Surface");
             m_SurfaceNoiseAmplitudeGUI = new GUIContent("Amplitude");
             m_SurfaceNoiseFrequencyGUI = new GUIContent("Frequency");
-            m_SurfaceYPositionGUI = new GUIContent("Y Level");
             m_SurfaceSeedGUI = new GUIContent("Seed");
 
             m_EnableGlobalNoiseGUI = new GUIContent("Enable Global Noise");
@@ -74,6 +78,8 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         {
             serializedObject.Update();
 
+            EditorGUILayout.PropertyField(m_InitialDensity, m_InitialDensityGUI);
+
             EditorGUILayout.PropertyField(m_EnableSurface, m_EnableSurfaceGUI);
             if (m_EnableSurface.boolValue)
             {
@@ -82,7 +88,6 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
                 
                 EditorGUILayout.PropertyField(m_SurfaceNoiseAmplitude, m_SurfaceNoiseAmplitudeGUI);
                 EditorGUILayout.PropertyField(m_SurfaceNoiseFrequency, m_SurfaceNoiseFrequencyGUI);
-                EditorGUILayout.PropertyField(m_SurfaceYPosition, m_SurfaceYPositionGUI);
                 EditorGUILayout.PropertyField(m_SurfaceNoiseSeed, m_SurfaceSeedGUI);
                 
                 EditorGUI.indentLevel--;

@@ -5,6 +5,7 @@ namespace LevelGeneration.Terrain.Scene
     /// </summary>
     public class SDFScene
     {
+        public readonly BaseLayer baseLayer;
         public readonly ShapeQueue terrainShapes;
         public readonly NoiseLayer surfaceNoise;
         public readonly NoiseLayer globalNoise;
@@ -18,6 +19,7 @@ namespace LevelGeneration.Terrain.Scene
 
         public SDFScene()
         {
+            baseLayer = new();
             terrainShapes = new();
             surfaceNoise = new();
             globalNoise = new();

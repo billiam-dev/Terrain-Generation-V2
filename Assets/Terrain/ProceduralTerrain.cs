@@ -87,7 +87,7 @@ namespace LevelGeneration.Terrain
         public const float Smoothness = 6.0f;
 
         // The maximum number of steps the FindSurface function will take to find the terrain surface.
-        const int k_MaxRaymarchSteps = 50;
+        const int k_MaxRaymarchSteps = 20;
 
         void OnEnable()
         {
@@ -195,7 +195,7 @@ namespace LevelGeneration.Terrain
             Stopwatch.Start(ref m_UpdateTime);
 
             // Evaluate scene changes.
-            if (m_Scene.surfaceNoise.IsDirty || m_Scene.globalNoise.IsDirty)
+            if (m_Scene.baseLayer.IsDirty || m_Scene.surfaceNoise.IsDirty || m_Scene.globalNoise.IsDirty)
             {
                 foreach (Brickmap brickmap in m_BrickmapLevels)
                     brickmap.MarkAllAsModified();
@@ -203,8 +203,6 @@ namespace LevelGeneration.Terrain
 
             if (m_Scene.terrainShapes.IsDirty)
             {
-                //Debug.Log($"Num modified volumes: {m_Scene.terrainShapes.ModifiedVolumes.Length}");
-
                 foreach (Volume volume in m_Scene.terrainShapes.ModifiedVolumes)
                 {
                     foreach (Brickmap brickmap in m_BrickmapLevels)
@@ -226,6 +224,7 @@ namespace LevelGeneration.Terrain
                 m_Mesher.ExecutePendingTasksContinuous();
 
             // Disable dirty flags in scene, terrain has been updated to reflect the changes.
+            m_Scene.baseLayer.IsDirty = false;
             m_Scene.surfaceNoise.IsDirty = false;
             m_Scene.globalNoise.IsDirty = false;
             m_Scene.terrainShapes.IsDirty = false;
@@ -271,7 +270,7 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public float SampleDensity(float3 positionWS)
         {
-            // Scale position by world scale.
+            // Scale position by the world scale.
             positionWS *= 1.0f / k_WorldScale;
 
             // Allocate a temporary density sampler.
@@ -296,7 +295,7 @@ namespace LevelGeneration.Terrain
             // Ensure direction is normalized.
             direction = math.normalize(direction);
 
-            // Scale origin position by world scale.
+            // Scale origin position by the world scale.
             positionWS *= 1.0f / k_WorldScale;
 
             // Allocate a temporary density sampler.
@@ -314,7 +313,7 @@ namespace LevelGeneration.Terrain
                 step++;
             }
 
-            // Dispose the sampler.
+            // Dispose the temporary sampler.
             sampler.Dispose();
 
             // Re-scale and return the position.
@@ -330,7 +329,7 @@ namespace LevelGeneration.Terrain
             // Ensure direction is normalized.
             direction = math.normalize(direction);
 
-            // Scale origin position by world scale.
+            // Scale origin position by the world scale.
             positionWS *= 1.0f / k_WorldScale;
 
             // Allocate a temporary density sampler.
@@ -342,8 +341,7 @@ namespace LevelGeneration.Terrain
 
             List<RaymarchResult> positions = new()
             {
-                // Initial position.
-                new RaymarchResult(positionWS * k_WorldScale, distance)
+                new RaymarchResult(positionWS * k_WorldScale, distance) // Initial position.
             };
 
             int step = 0;
@@ -355,7 +353,7 @@ namespace LevelGeneration.Terrain
                 step++;
             }
 
-            // Dispose the sampler.
+            // Dispose the temporary sampler.
             sampler.Dispose();
 
             // Re-scale and return the position.
@@ -657,15 +655,15 @@ namespace LevelGeneration.Terrain
                 readonly float worldSize;           // In-world size of this brick.
                 readonly float worldScale;          // The in-world scale of a single cell, constant.
 
-                readonly DensityCache densityCache; // Native arrays of cached density values.
-                readonly BrickRenderer renderer;    // Meshes for this brick.
+                readonly DensityCache densityCache; // Provides functions to evaluate and maintain the density field underlying this brick.
+                readonly BrickRenderer renderer;    // Provides functions to remesh and render this brick.
 
                 DensitySampler densitySampler;      // Density sampler struct for density JOBs, allocated when needed.
 
-                bool isUniformState;                // Whether this brick's density cache is uniform (all > 0 or all < 0).
-                bool densityModified;               // Flag to signal the density field underlying this brick has been modified.
-                bool transitionUpdateQueued;        // Whether the tranision mesh needs to be updated next time this brick is selected for rendering.
-                byte neighborLOD;                   // The packed LOD information of this brick.
+                bool isUniformState;                // Whether this brick is of uniform density or not (all > 0 or all < 0).
+                bool coreUpdateQueued;              // Flag to signal required re-evaluate the core density of this brick.
+                bool transitionUpdateQueued;        // Flag to signal required re-evaluate the transition density of this brick.
+                byte neighborLOD;                   // LOD information about the six neighboring bricks, packed into a single byte.
 
                 public Brick(int3 index, int size, int levelScale, float worldScale)
                 {
@@ -683,7 +681,8 @@ namespace LevelGeneration.Terrain
                     densitySampler = new();
 
                     isUniformState = true;
-                    densityModified = false;
+                    coreUpdateQueued = false;
+                    transitionUpdateQueued = false;
                     neighborLOD = 0x0000_0000;
                 }
 
@@ -702,23 +701,19 @@ namespace LevelGeneration.Terrain
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
                         return;
 
-                    // Queue transition update if density has been modified.
-                    if (densityModified && levelScale > 1)
-                        transitionUpdateQueued = true;
-
                     // Allocate a density sampler in advance for core or transition density JOBs.
-                    if (densityModified || transitionUpdateQueued)
+                    if (coreUpdateQueued || transitionUpdateQueued)
                     {                        
                         densitySampler.Allocate(scene, Allocator.TempJob); // TODO: allocate in ProceduralTerrain and pass around.
 
-                        int[] intersectingTerrainShapeIndices = FindIntersectingShapes(scene, brickmapTerrainShapeIndices);
+                        int[] intersectingTerrainShapeIndices = FindIntersectingShapeIndices(scene.terrainShapes, brickmapTerrainShapeIndices);
                         densitySampler.AssignTerrainShapeIndices(intersectingTerrainShapeIndices);
                     }
 
                     //
                     // Evaluate core.
                     //
-                    if (densityModified)
+                    if (coreUpdateQueued)
                     {
                         /* 
                          * Special case for bricks with large distances:
@@ -733,7 +728,7 @@ namespace LevelGeneration.Terrain
 
                         if (centreSample > densityFence || centreSample < -densityFence)
                         {
-                            // If we are not already uniform, dispose this object.
+                            // If we are not already uniform, dispose density and renderer data.
                             if (!isUniformState)
                                 Dispose();
 
@@ -749,29 +744,32 @@ namespace LevelGeneration.Terrain
 
                             if (!result.isUniformState)
                             {
+                                bool allocateTransition = levelScale > 1;
+
                                 // Ensure core density is allocated and copy density result.
                                 if (!densityCache.IsAllocated)
-                                    densityCache.Allocate(size, levelScale > 1);
+                                    densityCache.Allocate(size, allocateTransition);
 
                                 densityCache.CopyCoreDensity(result.density);
 
                                 // Ensure renderer is allocated and schedule core remeshing task.
                                 if (!renderer.IsAllocated)
-                                    renderer.Allocate(worldSize, levelScale > 1);
+                                    renderer.Allocate(worldSize, allocateTransition);
 
                                 renderer.RemeshCore(index, size, levelScale, worldScale, densityCache.CoreDensityPointer, mesher);
                             }
-                            else if (!isUniformState)
+                            else
                             {
-                                Dispose();
+                                // If we are not already uniform, dispose density and renderer data.
+                                if (!isUniformState)
+                                    Dispose();
                             }
 
                             // Set new uniformity status.
                             isUniformState = result.isUniformState;
                         }
 
-                        // Disable densityModified flag.
-                        densityModified = false;
+                        coreUpdateQueued = false;
                     }
 
                     //
@@ -808,6 +806,7 @@ namespace LevelGeneration.Terrain
 
                 public void UpdateNeighborLOD(byte neighborLOD)
                 {
+                    // If the new neighbor LOD data is different, update it and queue a transition update.
                     if (this.neighborLOD != neighborLOD)
                     {
                         this.neighborLOD = neighborLOD;
@@ -817,39 +816,46 @@ namespace LevelGeneration.Terrain
 
                 public void Render(Camera renderCamera, Material material, MaterialPropertyBlock mpb)
                 {
-                    // We can skip rendering if this is of uniform state.
-                    if (isUniformState)
-                        return;
-
                     // We can skip rendering far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(renderCamera))
                         return;
 
-                    renderer.Draw(worldPosition, material, mpb, renderCamera, neighborLOD);
+                    // We can skip rendering if this brick is of uniform state.
+                    if (!isUniformState)
+                        renderer.Draw(worldPosition, material, mpb, renderCamera, neighborLOD);
                 }
 
-                int[] FindIntersectingShapes(SDFScene scene, List<int> shapeIndices)
+                public void MarkAsModified()
+                {
+                    coreUpdateQueued = true;
+
+                    if (levelScale > 1)
+                        transitionUpdateQueued = true;
+                }
+
+                int[] FindIntersectingShapeIndices(ShapeQueue shapeQueue, List<int> checkIndices)
                 {
                     // TODO: evaluate speed of this function, perhaps it could be ran in parallel in a job, if it is slow.
 
-                    Shape[] terrainShapes = scene.terrainShapes.Shapes;
-                    List<int> intersectingShapes = new();
+                    Shape[] shapes = shapeQueue.Shapes;
+                    List<int> returnIndices = new();
 
-                    foreach (int shapeIndex in shapeIndices)
+                    foreach (int index in checkIndices)
                     {
                         // Get brick volume from shape.
-                        IntVolume indices = GetBrickVolumeFromAABB(size, levelScale * worldScale, terrainShapes[shapeIndex].Volume);
+                        IntVolume brickVolume = GetBrickVolumeFromAABB(size, levelScale * worldScale, shapes[index].Volume);
 
                         // Account for density data overflowing into adjacent bricks by extending the brick volume by 1 on each side.
-                        indices.coordinate -= 1;
-                        indices.size += 2;
+                        brickVolume.coordinate -= 1;
+                        brickVolume.size += 2;
 
-                        // If brick index is within the volume, add to the list.
-                        if (math.all(index >= indices.coordinate) && math.all(index < indices.coordinate + indices.size))
-                            intersectingShapes.Add(shapeIndex);
+                        // If this brick is within the volume, add the shape index to the list.
+                        if (math.all(this.index >= brickVolume.coordinate) &&
+                            math.all(this.index < brickVolume.coordinate + brickVolume.size))
+                            returnIndices.Add(index);
                     }
 
-                    return intersectingShapes.ToArray();
+                    return returnIndices.ToArray();
                 }
 
                 bool InViewFrustum(Camera camera)
@@ -858,12 +864,6 @@ namespace LevelGeneration.Terrain
                     Bounds bounds = new(worldPosition, Vector3.one * worldSize);
                     return GeometryUtility.TestPlanesAABB(frustumPlanes, bounds);
                 }
-
-                public void MarkAsModified() => densityModified = true;
-
-                public float SampleCache(int3 index) => densityCache.Sample(index, size);
-
-                public bool IntersectingSurface => !isUniformState;
 
                 public int MemoryUsageBytes()
                 {
@@ -1037,7 +1037,7 @@ namespace LevelGeneration.Terrain
 
                 // Update shapes intersecting this brickmap level.
                 if (originHasMoved || scene.terrainShapes.IsDirty)
-                    UpdateIntersectingShapeIndices(scene);
+                    UpdateIntersectingShapeIndices(scene.terrainShapes);
 
                 // Update all bricks.
                 foreach (Brick brick in bricks.Values)
@@ -1072,9 +1072,9 @@ namespace LevelGeneration.Terrain
                 if (math.any(volume.size == 0))
                     return;
 
-                IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, volume);
-                int3 initialIndex = indices.coordinate;
-                int3 size = indices.size;
+                IntVolume brickVolume = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, volume);
+                int3 initialIndex = brickVolume.coordinate;
+                int3 size = brickVolume.size;
 
                 for (int x = 0; x < size.x; x++)
                 {
@@ -1091,23 +1091,23 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            void UpdateIntersectingShapeIndices(SDFScene scene)
+            void UpdateIntersectingShapeIndices(ShapeQueue shapeQueue)
             {
                 intersectingTerrainShapes.Clear();
 
-                Shape[] terrainShapes = scene.terrainShapes.Shapes;
-                for (int i = 0; i < terrainShapes.Length; i++)
+                Shape[] shapes = shapeQueue.Shapes;
+                for (int i = 0; i < shapes.Length; i++)
                 {
                     // Get brick volume from shape.
-                    IntVolume volume = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, terrainShapes[i].Volume);
+                    IntVolume brickVolume = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, shapes[i].Volume);
 
                     // Account for density data overflowing into adjacent bricks.
-                    volume.coordinate -= 1;
-                    volume.size += 2;
+                    brickVolume.coordinate -= 1;
+                    brickVolume.size += 2;
 
                     // AABB intersection logic.
-                    int3 aMax = volume.coordinate + volume.size - 1;
-                    int3 aMin = volume.coordinate;
+                    int3 aMax = brickVolume.coordinate + brickVolume.size - 1;
+                    int3 aMin = brickVolume.coordinate;
 
                     int3 bMax = originIndex + halfBrickmapSize - 1;
                     int3 bMin = originIndex - halfBrickmapSize;

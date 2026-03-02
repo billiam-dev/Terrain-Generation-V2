@@ -64,7 +64,7 @@ namespace LevelGeneration.Terrain
             {
                 public void Draw(Color color)
                 {
-                    color += densityModified ? Color.red : RandomPastelColor(index);
+                    color += coreUpdateQueued ? Color.red : RandomPastelColor(index);
                     color.a = isUniformState ? 0.005f : 0.2f;
 
                     Gizmos.color = color;
@@ -136,12 +136,14 @@ namespace LevelGeneration.Terrain
 
                 foreach (int shapeIndex in intersectingTerrainShapes)
                 {
-                    IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, scene.terrainShapes.Shapes[shapeIndex].Volume);
+                    IntVolume brickVolume = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, scene.terrainShapes.Shapes[shapeIndex].Volume);
+                    int3 initialIndex = brickVolume.coordinate;
+                    int3 size = brickVolume.size;
 
-                    for (int x = 0; x < indices.size.x; x++)
-                        for (int y = 0; y < indices.size.y; y++)
-                            for (int z = 0; z < indices.size.z; z++)
-                                bricksInShapeVolumes.Add(indices.coordinate + new int3(x, y, z));
+                    for (int x = 0; x < size.x; x++)
+                        for (int y = 0; y < size.y; y++)
+                            for (int z = 0; z < size.z; z++)
+                                bricksInShapeVolumes.Add(initialIndex + new int3(x, y, z));
                 }
 
                 Gizmos.color = new Color(1.0f, 0.1f, 0.0f, 0.1f);

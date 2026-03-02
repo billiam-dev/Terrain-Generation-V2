@@ -1,5 +1,3 @@
-using Unity.Mathematics;
-
 namespace LevelGeneration.Terrain.Scene
 {
     /// <summary>
@@ -7,7 +5,6 @@ namespace LevelGeneration.Terrain.Scene
     /// </summary>
     public class NoiseLayer
     {
-        float3 offset;
         float amplitude;
         float frequency;
         int seed;
@@ -23,34 +20,6 @@ namespace LevelGeneration.Terrain.Scene
             set
             {
                 isDirty = value;
-            }
-        }
-
-        bool isEnabled;
-
-        public bool IsEnabled
-        {
-            get
-            {
-                return isEnabled;
-            }
-            set
-            {
-                isEnabled = value;
-                isDirty = true;
-            }
-        }
-
-        public float3 Offset
-        {
-            get
-            {
-                return offset;
-            }
-            set
-            {
-                offset = value;
-                isDirty = true;
             }
         }
 
@@ -95,7 +64,6 @@ namespace LevelGeneration.Terrain.Scene
 
         public void Clear()
         {
-            offset = 0;
             amplitude = 0;
             frequency = 0;
             seed = 0;

@@ -34,16 +34,16 @@ namespace LevelGeneration.Terrain.SDF
             public readonly float3 offset;   // 12 bytes
             public readonly float amplitude; // 4 byes
             public readonly float frequency; // 4 bytes
-            public readonly int seed;        // 4 bytes
 
-            public NoiseData(float3 offset, float amplitude, float frequency, int seed)
+            public NoiseData(float amplitude, float frequency, float3 seededOffset)
             {
-                this.offset = offset;
                 this.amplitude = amplitude;
                 this.frequency = frequency;
-                this.seed = seed;
+                this.offset = seededOffset;
             }
         }
+
+        float m_IntialDensity;
 
         NativeArray<DistanceFunctionData> m_TerrainShapes;
         NativeArray<int> m_TerrainShapeIndices;
@@ -68,6 +68,8 @@ namespace LevelGeneration.Terrain.SDF
             }
 
             m_Allocator = allocator;
+
+            m_IntialDensity = scene.baseLayer.Value;
 
             //
             // Terrain shapes.
@@ -94,11 +96,18 @@ namespace LevelGeneration.Terrain.SDF
 
             NoiseLayer surfaceNoise = scene.surfaceNoise;
 
+            float3 offset;
+
+            offset.x = surfaceNoise.Seed * 2741;
+            offset.y = 0;
+            offset.z = surfaceNoise.Seed * 6673;
+
+            offset %= 1e6f;
+
             m_SurfaceNoise = new NoiseData(
-                surfaceNoise.Offset,
                 surfaceNoise.Amplitude,
                 surfaceNoise.Frequency,
-                surfaceNoise.Seed);
+                offset);
 
             //
             // Global noise.
@@ -106,11 +115,16 @@ namespace LevelGeneration.Terrain.SDF
 
             NoiseLayer globalNoise = scene.globalNoise;
 
+            offset.x = globalNoise.Seed * 3907;
+            offset.y = globalNoise.Seed * 5939;
+            offset.z = globalNoise.Seed * 7919;
+
+            offset %= 1e6f;
+
             m_GlobalNoise = new NoiseData(
-                globalNoise.Offset,
                 globalNoise.Amplitude,
                 globalNoise.Frequency,
-                globalNoise.Seed);
+                offset);
 
             m_IsAllocated = true;
         }
@@ -157,11 +171,11 @@ namespace LevelGeneration.Terrain.SDF
 
         public readonly float Sample(float3 worldPosition)
         {
-            float density = 0.0f;
+            float density = m_IntialDensity;
 
-            density = SampleSurface(m_SurfaceNoise, worldPosition, density);            // Noise based surface
-            density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);  // User terrain shapes
-            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);             // 3D global noise
+            density = SampleSurface(m_SurfaceNoise, worldPosition, density);
+            density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);
+            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
 
             // TODO: Apply in-game user shapes (CSG).
             //density = SampleShapeQueueHard(worldPosition, density);
@@ -171,14 +185,30 @@ namespace LevelGeneration.Terrain.SDF
 
         public readonly float SampleWithIndices(float3 worldPosition)
         {
-            float density = 0.0f;
+            float density = m_IntialDensity;
 
-            density = SampleSurface(m_SurfaceNoise, worldPosition, density);                                    // Noise based surface
-            density = SampleShapeQueueSmooth(m_TerrainShapes, m_TerrainShapeIndices, worldPosition, density);   // User terrain shapes with indices selection (avoid evaluating far away shapes in JOBs)
-            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);                                     // 3D global noise
+            density = SampleSurface(m_SurfaceNoise, worldPosition, density);
+            density = SampleShapeQueueSmooth(m_TerrainShapes, m_TerrainShapeIndices, worldPosition, density);
+            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
 
             // TODO: Apply in-game user shapes (CSG).
             //density = SampleShapeQueueHard(worldPosition, density);
+
+            return density;
+        }
+
+        public readonly float SampleIndicesWithCache(float3 worldPosition)
+        {
+            return m_IntialDensity;
+        }
+
+        public readonly float SampleNoCSG(float3 worldPosition)
+        {
+            float density = m_IntialDensity;
+
+            density = SampleSurface(m_SurfaceNoise, worldPosition, density);
+            density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);
+            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
 
             return density;
         }
@@ -191,6 +221,12 @@ namespace LevelGeneration.Terrain.SDF
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float SampleSurface(NoiseData surfaceData, float3 worldPosition, float density)
         {
+#if UNITY_EDITOR
+            // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the game.
+            if (surfaceData.amplitude == 0)
+                return density;
+#endif
+
             // TODO: seed
             return density + Surface(worldPosition - surfaceData.offset, surfaceData.frequency, surfaceData.amplitude);
         }
@@ -198,6 +234,12 @@ namespace LevelGeneration.Terrain.SDF
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float Sample3DNoise(NoiseData noiseData, float3 worldPosition, float density)
         {
+#if UNITY_EDITOR
+            // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the game.
+            if (noiseData.amplitude == 0)
+                return density;
+#endif
+
             // TODO: seed
             return density + Noise(worldPosition + noiseData.offset, noiseData.frequency, noiseData.amplitude);
         }

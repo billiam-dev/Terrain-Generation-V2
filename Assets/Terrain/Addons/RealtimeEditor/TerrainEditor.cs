@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Unity.Mathematics;
 using UnityEngine;
 
 using LevelGeneration.Terrain.Scene;
@@ -14,6 +13,8 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
     [RequireComponent(typeof(ProceduralTerrain))]
     public class TerrainEditor : MonoBehaviour
     {
+        public float InitialDensity = 0.0f;
+
         /// <summary>
         /// Initialize the scene with a surface to stand on.
         /// </summary>
@@ -22,7 +23,6 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
         public float SurfaceNoiseAmplitude = 50.0f;
         public float SurfaceNoiseFrequency = 0.001f;
-        public float SurfaceYPosition = 0.0f;
         public int SurfaceNoiseSeed = 0;
 
         /// <summary>
@@ -96,20 +96,22 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         void UpdateScene()
         {
             //
+            // Base Value
+            //
+
+            BaseLayer baseLayer = m_Scene.baseLayer;
+
+            if (!baseLayer.Value.Equals(InitialDensity))
+                baseLayer.Value = InitialDensity;
+
+            //
             // Surface Noise
             //
 
             NoiseLayer surfaceNoise = m_Scene.surfaceNoise;
 
-            if (!surfaceNoise.IsEnabled.Equals(EnableSurface))
-                surfaceNoise.IsEnabled = EnableSurface;
-
             if (EnableSurface)
             {
-                float3 offset = new(0, SurfaceYPosition, 0);
-                if (!surfaceNoise.Offset.Equals(offset))
-                    surfaceNoise.Offset = offset;
-
                 if (!surfaceNoise.Amplitude.Equals(SurfaceNoiseAmplitude))
                     surfaceNoise.Amplitude = SurfaceNoiseAmplitude;
 
@@ -119,15 +121,17 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
                 if (!surfaceNoise.Seed.Equals(SurfaceNoiseSeed))
                     surfaceNoise.Seed = SurfaceNoiseSeed;
             }
+            else
+            {
+                if (!surfaceNoise.Amplitude.Equals(0))
+                    surfaceNoise.Amplitude = 0;
+            }
 
             //
             // Global Noise
             //
 
             NoiseLayer globalNoise = m_Scene.globalNoise;
-
-            if (!globalNoise.IsEnabled.Equals(EnableGlobalNoise))
-                globalNoise.IsEnabled = EnableGlobalNoise;
 
             if (EnableGlobalNoise)
             {
@@ -140,15 +144,17 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
                 if (!globalNoise.Seed.Equals(GlobalNoiseSeed))
                     globalNoise.Seed = GlobalNoiseSeed;
             }
+            else
+            {
+                if (!globalNoise.Amplitude.Equals(0))
+                    globalNoise.Amplitude = 0;
+            }
 
             //
             // Terrain Shapes
             //
 
             ShapeQueue terrainShapes = m_Scene.terrainShapes;
-
-            if (!terrainShapes.IsEnabled.Equals(EnableTerrainShapes))
-                terrainShapes.IsEnabled = EnableTerrainShapes;
 
             if (EnableTerrainShapes)
             {
@@ -166,6 +172,14 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
                         terrainShapes.AddShape(shapeBrush.Shape);
                     }
+                }
+            }
+            else
+            {
+                if (terrainShapes.Count != 0)
+                {
+                    terrainShapes.Clear();
+                    m_ShapeBrushes.Clear();
                 }
             }
         }
