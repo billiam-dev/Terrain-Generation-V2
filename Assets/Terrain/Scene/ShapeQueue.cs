@@ -270,11 +270,6 @@ namespace LevelGeneration.Terrain.Scene
 
         }
 
-        public Shape()
-        {
-
-        }
-
         /// <summary>
         /// Computes a world space AABB for this shape, in world space.
         /// </summary>

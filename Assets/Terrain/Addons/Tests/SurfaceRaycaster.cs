@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace LevelGeneration.Terrain.Addons.Test
 {
-    public class Raycaster : MonoBehaviour
+    public class SurfaceRaycaster : MonoBehaviour
     {
         [SerializeField]
         ProceduralTerrain m_Terrain;

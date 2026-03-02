@@ -32,7 +32,7 @@ namespace LevelGeneration.Terrain
             if (m_DrawShapeVolumes)
             {
                 for (int i = 0; i < k_NumBrickmapLevels; i++)
-                    m_BrickmapLevels[i].DrawShapeVolumes();
+                    m_BrickmapLevels[i].DrawShapeVolumes(m_Scene);
             }
         }
 
@@ -130,15 +130,13 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            public void DrawShapeVolumes()
+            public void DrawShapeVolumes(SDFScene scene)
             {
-                // TODO: repair now that bricks contain a list of shape indices.
-                /*
                 HashSet<int3> bricksInShapeVolumes = new();
 
-                foreach (Shape shape in shapes)
+                foreach (int shapeIndex in intersectingTerrainShapes)
                 {
-                    IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, shape.ComputeVolume());
+                    IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, scene.terrainShapes.Shapes[shapeIndex].Volume);
 
                     for (int x = 0; x < indices.size.x; x++)
                         for (int y = 0; y < indices.size.y; y++)
@@ -156,7 +154,6 @@ namespace LevelGeneration.Terrain
 
                     Gizmos.DrawCube(bricksCentre, worldBrickSize);
                 }
-                */
             }
 
             public void DrawBounds()
