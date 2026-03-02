@@ -203,18 +203,19 @@ namespace LevelGeneration.Terrain
 
             if (m_Scene.terrainShapes.IsDirty)
             {
+                //Debug.Log($"Num modified volumes: {m_Scene.terrainShapes.ModifiedVolumes.Length}");
+
                 foreach (Volume volume in m_Scene.terrainShapes.ModifiedVolumes)
                 {
                     foreach (Brickmap brickmap in m_BrickmapLevels)
-                        brickmap.MarkBoundsAsModified(volume);
+                        brickmap.MarkVolumeAsModified(volume);
                 }
+
+                m_Scene.terrainShapes.ClearModifiedVolumes();
             }
 
             // Update brickmap levels.
             float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
-
-            // TODO: I would really like not to have to pass the scene this deep.
-            // Then the IsDirty flags can be disabled above and we have better encapsulation.
 
             m_BrickmapLevels[0].Update(camera, observerPosition, 0, m_Scene, m_DensityEvaluator, m_Mesher);
             for (int i = 1; i < k_NumBrickmapLevels; i++)
@@ -224,6 +225,7 @@ namespace LevelGeneration.Terrain
             if (m_Mesher.NumPendingTasks > 0)
                 m_Mesher.ExecutePendingTasksContinuous();
 
+            // Disable dirty flags in scene, terrain has been updated to reflect the changes.
             m_Scene.surfaceNoise.IsDirty = false;
             m_Scene.globalNoise.IsDirty = false;
             m_Scene.terrainShapes.IsDirty = false;
@@ -274,7 +276,7 @@ namespace LevelGeneration.Terrain
 
             // Allocate a temporary density sampler.
             DensitySampler sampler = new();
-            sampler.Allocate(m_Scene.terrainShapes.Shapes, m_Scene.surfaceNoise, m_Scene.globalNoise, Allocator.Temp);
+            sampler.Allocate(m_Scene, Allocator.Temp);
 
             // Sample the SDF at the given position.
             float value = sampler.Sample(positionWS);
@@ -299,7 +301,7 @@ namespace LevelGeneration.Terrain
 
             // Allocate a temporary density sampler.
             DensitySampler sampler = new();
-            sampler.Allocate(m_Scene.terrainShapes.Shapes, m_Scene.surfaceNoise, m_Scene.globalNoise, Allocator.Temp);
+            sampler.Allocate(m_Scene, Allocator.Temp);
 
             // Step forward by the sampled distance value until we are acceptably close to the surface.
             float distance = sampler.Sample(positionWS);
@@ -325,8 +327,6 @@ namespace LevelGeneration.Terrain
         /// </summary>
         public List<RaymarchResult> FindSurfaceWithSteps(float3 positionWS, float3 direction, float minDistance = 0.1f)
         {
-            List<RaymarchResult> positions = new(); 
-
             // Ensure direction is normalized.
             direction = math.normalize(direction);
 
@@ -335,11 +335,16 @@ namespace LevelGeneration.Terrain
 
             // Allocate a temporary density sampler.
             DensitySampler sampler = new();
-            sampler.Allocate(m_Scene.terrainShapes.Shapes, m_Scene.surfaceNoise, m_Scene.globalNoise, Allocator.Temp);
+            sampler.Allocate(m_Scene, Allocator.Temp);
 
             // Step forward by the sampled distance value until we are acceptably close to the surface.
             float distance = sampler.Sample(positionWS);
-            positions.Add(new RaymarchResult(positionWS * k_WorldScale, distance));
+
+            List<RaymarchResult> positions = new()
+            {
+                // Initial position.
+                new RaymarchResult(positionWS * k_WorldScale, distance)
+            };
 
             int step = 0;
             while (distance > minDistance && step < k_MaxRaymarchSteps)
@@ -691,7 +696,7 @@ namespace LevelGeneration.Terrain
                         renderer.Dispose();
                 }
 
-                public void Update(Camera observerCamera, List<Shape> shapes, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
+                public void Update(Camera observerCamera, SDFScene scene, List<int> brickmapTerrainShapeIndices, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
                 {
                     // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
@@ -703,9 +708,11 @@ namespace LevelGeneration.Terrain
 
                     // Allocate a density sampler in advance for core or transition density JOBs.
                     if (densityModified || transitionUpdateQueued)
-                    {
-                        // TODO: possibly run FindIntersectingShapes(shapes) as JOBs in parallel, this is quite slow.
-                        densitySampler.Allocate(FindIntersectingShapes(shapes), scene.surfaceNoise, scene.globalNoise, Allocator.TempJob); // TODO: allocate in ProceduralTerrain and pass around, perhaps with an indices array for shapes?
+                    {                        
+                        densitySampler.Allocate(scene, Allocator.TempJob); // TODO: allocate in ProceduralTerrain and pass around.
+
+                        int[] intersectingTerrainShapeIndices = FindIntersectingShapes(scene, brickmapTerrainShapeIndices);
+                        densitySampler.AssignTerrainShapeIndices(intersectingTerrainShapeIndices);
                     }
 
                     //
@@ -721,7 +728,7 @@ namespace LevelGeneration.Terrain
                          * skip evaluating the full density function for this brick.
                         */
 
-                        float centreSample = densitySampler.Sample(worldPosition);
+                        float centreSample = densitySampler.SampleWithIndices(worldPosition);
                         float densityFence = (worldSize * 2.0f) + 1.0f; // Add 1 to catch literal edge cases.
 
                         if (centreSample > densityFence || centreSample < -densityFence)
@@ -821,14 +828,17 @@ namespace LevelGeneration.Terrain
                     renderer.Draw(worldPosition, material, mpb, renderCamera, neighborLOD);
                 }
 
-                Shape[] FindIntersectingShapes(List<Shape> shapes)
+                int[] FindIntersectingShapes(SDFScene scene, List<int> shapeIndices)
                 {
-                    List<Shape> intersectingShapes = new();
+                    // TODO: evaluate speed of this function, perhaps it could be ran in parallel in a job, if it is slow.
 
-                    foreach (Shape shape in shapes)
+                    Shape[] terrainShapes = scene.terrainShapes.Shapes;
+                    List<int> intersectingShapes = new();
+
+                    foreach (int shapeIndex in shapeIndices)
                     {
                         // Get brick volume from shape.
-                        IntVolume indices = GetBrickVolumeFromAABB(size, levelScale * worldScale, shape.ComputeVolume());
+                        IntVolume indices = GetBrickVolumeFromAABB(size, levelScale * worldScale, terrainShapes[shapeIndex].Volume);
 
                         // Account for density data overflowing into adjacent bricks by extending the brick volume by 1 on each side.
                         indices.coordinate -= 1;
@@ -836,7 +846,7 @@ namespace LevelGeneration.Terrain
 
                         // If brick index is within the volume, add to the list.
                         if (math.all(index >= indices.coordinate) && math.all(index < indices.coordinate + indices.size))
-                            intersectingShapes.Add(shape);
+                            intersectingShapes.Add(shapeIndex);
                     }
 
                     return intersectingShapes.ToArray();
@@ -888,8 +898,8 @@ namespace LevelGeneration.Terrain
             readonly int quarterBrickmapSize;  // One fourth the number of bricks per axis contained in this brick map.
             readonly int levelScale;           // The scale multiplier relative to the smallest brickmap level, derrived from the level index with the equation (2 ^ level).
 
-            readonly Dictionary<int3, Brick> bricks; // Or should I call it the Bricktionary?
-            readonly List<Shape> shapes;
+            readonly Dictionary<int3, Brick> bricks;        // Map of loaded bricks, centred around the given observer. Should be called the Bricktionary.
+            readonly List<int> intersectingTerrainShapes;   // List of indices into the scenes terrain shape queue, only containing shapes whose volumes intersects this brickmap level.
 
             int3 originIndex;                  // The global brick index in which this map currently originates.
             int3 lowerGridOffset;              // The local offset of the brickmap contained within this one.
@@ -902,7 +912,7 @@ namespace LevelGeneration.Terrain
 
             public int3 OriginIndex => originIndex;
 
-            public List<Shape> IntersectingShapes => shapes; // TODO: only check intersection against previous brickmap level shapes.
+            public List<int> IntersectingShapes => intersectingTerrainShapes; // TODO: only check intersection against previous brickmap level shapes.
 
             readonly int3[] NeighborOffsets =
             {
@@ -937,7 +947,7 @@ namespace LevelGeneration.Terrain
                 levelScale = 1 << levelIndex;
 
                 bricks = new(brickmapSize * brickmapSize * brickmapSize);
-                shapes = new();
+                intersectingTerrainShapes = new();
 
                 originIndex = int.MaxValue;
                 lowerGridOffset = 0;
@@ -949,7 +959,7 @@ namespace LevelGeneration.Terrain
                     brick.Dispose();
 
                 bricks.Clear();
-                shapes.Clear();
+                intersectingTerrainShapes.Clear();
             }
 
             public void Update(Camera observerCamera, float3 observerPosition, int3 lowerGridOriginIndex, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
@@ -1027,11 +1037,11 @@ namespace LevelGeneration.Terrain
 
                 // Update shapes intersecting this brickmap level.
                 if (originHasMoved || scene.terrainShapes.IsDirty)
-                    FindIntersectingShapes(scene);
+                    UpdateIntersectingShapeIndices(scene);
 
                 // Update all bricks.
                 foreach (Brick brick in bricks.Values)
-                    brick.Update(observerCamera, shapes, scene, densityEvaluator, mesher);
+                    brick.Update(observerCamera, scene, intersectingTerrainShapes, densityEvaluator, mesher);
 
                 if (isMajorUpdate)
                     Stopwatch.End(ref majorUpdateTime);
@@ -1057,14 +1067,14 @@ namespace LevelGeneration.Terrain
                     brick.MarkAsModified();
             }
 
-            public void MarkBoundsAsModified(Volume bounds)
+            public void MarkVolumeAsModified(Volume volume)
             {
-                if (math.any(bounds.size == 0))
+                if (math.any(volume.size == 0))
                     return;
 
-                IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, bounds);
-                int3 size = indices.size;
+                IntVolume indices = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, volume);
                 int3 initialIndex = indices.coordinate;
+                int3 size = indices.size;
 
                 for (int x = 0; x < size.x; x++)
                 {
@@ -1081,34 +1091,33 @@ namespace LevelGeneration.Terrain
                 }
             }
 
-            void FindIntersectingShapes(SDFScene scene)
+            void UpdateIntersectingShapeIndices(SDFScene scene)
             {
-                // TODO: a fun optimization here; a given brickmap level only needs to test shapes for intersection that passed the check for the prior brickmap level.
-                // This sort of acts a binary chop for the shape data, cutting down on the other most expensive part of the updating loop.
+                intersectingTerrainShapes.Clear();
 
-                shapes.Clear();
-
-                foreach (Shape shape in scene.terrainShapes.Shapes)
+                Shape[] terrainShapes = scene.terrainShapes.Shapes;
+                for (int i = 0; i < terrainShapes.Length; i++)
                 {
                     // Get brick volume from shape.
-                    IntVolume bounds = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, shape.ComputeVolume());
+                    IntVolume volume = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, terrainShapes[i].Volume);
 
                     // Account for density data overflowing into adjacent bricks.
-                    bounds.coordinate -= 1;
-                    bounds.size += 2;
+                    volume.coordinate -= 1;
+                    volume.size += 2;
 
                     // AABB intersection logic.
-                    int3 aMax = bounds.coordinate + bounds.size - 1;
-                    int3 aMin = bounds.coordinate;
+                    int3 aMax = volume.coordinate + volume.size - 1;
+                    int3 aMin = volume.coordinate;
 
                     int3 bMax = originIndex + halfBrickmapSize - 1;
                     int3 bMin = originIndex - halfBrickmapSize;
 
-                    // If map volume overlaps with the shape volume.
+                    // If map volume overlaps with the shape volume, skip this shape.
                     if (math.any(aMax < bMin) || math.any(aMin > bMax))
                         continue;
 
-                    shapes.Add(shape);
+                    // Else, add the shape index to the list.
+                    intersectingTerrainShapes.Add(i);
                 }
             }
 
@@ -1173,19 +1182,6 @@ namespace LevelGeneration.Terrain
                 }
 
                 return neighborLOD;
-            }
-
-            public bool BrickIntersectsSurface(int3 brickIndex)
-            {
-                return bricks.ContainsKey(brickIndex) && bricks[brickIndex].IntersectingSurface;
-            }
-
-            public float SampleCache(int3 brickIndex, int3 cellIndex)
-            {
-                if (!bricks.ContainsKey(brickIndex))
-                    return 32.0f;
-
-                return bricks[brickIndex].SampleCache(cellIndex);
             }
 
             public int MemoryUsageBytes()

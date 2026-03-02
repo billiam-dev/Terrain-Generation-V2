@@ -155,7 +155,7 @@ namespace LevelGeneration.Terrain.SDF
                 float3 worldPosition = (float3)globalCellIndex * worldScale;
 
                 // Sample the SDF.
-                float newDensity = densitySampler.Sample(worldPosition);
+                float newDensity = densitySampler.SampleWithIndices(worldPosition);
 
                 // Store the new density.
                 density[index] = newDensity;
@@ -216,7 +216,7 @@ namespace LevelGeneration.Terrain.SDF
                 float3 worldPosition = (float3)globalCellIndex * worldScale;
 
                 // Store the new density.
-                density[index] = densitySampler.Sample(worldPosition);
+                density[index] = densitySampler.SampleWithIndices(worldPosition);
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

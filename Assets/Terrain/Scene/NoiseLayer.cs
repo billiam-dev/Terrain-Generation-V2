@@ -2,6 +2,9 @@ using Unity.Mathematics;
 
 namespace LevelGeneration.Terrain.Scene
 {
+    /// <summary>
+    /// For an SDF scene, a noise layer applied to the distance field.
+    /// </summary>
     public class NoiseLayer
     {
         float3 offset;
@@ -20,6 +23,21 @@ namespace LevelGeneration.Terrain.Scene
             set
             {
                 isDirty = value;
+            }
+        }
+
+        bool isEnabled;
+
+        public bool IsEnabled
+        {
+            get
+            {
+                return isEnabled;
+            }
+            set
+            {
+                isEnabled = value;
+                isDirty = true;
             }
         }
 

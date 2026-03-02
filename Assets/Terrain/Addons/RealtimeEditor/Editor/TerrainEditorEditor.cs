@@ -5,7 +5,7 @@ using UnityEngine;
 namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 {
     [CustomEditor(typeof(TerrainEditor))]
-    public class TerrainSceneEditor : Editor
+    public class TerrainEditorEditor : Editor
     {
         // Properties
         SerializedProperty m_EnableSurface;
@@ -19,6 +19,8 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         SerializedProperty m_GlobalNoiseFrequency;
         SerializedProperty m_GlobalNoiseSeed;
 
+        SerializedProperty m_EnableTerrainShapes;
+
         // GUI Contents
         GUIContent m_EnableSurfaceGUI;
         GUIContent m_SurfaceNoiseAmplitudeGUI;
@@ -30,6 +32,8 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         GUIContent m_GlobalNoiseAmplitudeGUI;
         GUIContent m_GlobalNoiseFrequencyGUI;
         GUIContent m_GlobalNoiseSeedGUI;
+        
+        GUIContent m_EnableTerrainShapesGUI;
 
         TerrainEditor m_Target;
 
@@ -48,6 +52,8 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
             m_GlobalNoiseFrequency = o.Find(x => x.GlobalNoiseFrequency);
             m_GlobalNoiseSeed = o.Find(x => x.GlobalNoiseSeed);
 
+            m_EnableTerrainShapes = o.Find(x => x.EnableTerrainShapes);
+
             m_EnableSurfaceGUI = new GUIContent("Enable Surface");
             m_SurfaceNoiseAmplitudeGUI = new GUIContent("Amplitude");
             m_SurfaceNoiseFrequencyGUI = new GUIContent("Frequency");
@@ -59,6 +65,8 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
             m_GlobalNoiseFrequencyGUI = new GUIContent("Frequency");
             m_GlobalNoiseSeedGUI = new GUIContent("Seed");
 
+            m_EnableTerrainShapesGUI = new GUIContent("Enable Terrain Shapes");
+
             m_Target = (TerrainEditor)target;
         }
 
@@ -69,28 +77,38 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
             EditorGUILayout.PropertyField(m_EnableSurface, m_EnableSurfaceGUI);
             if (m_EnableSurface.boolValue)
             {
+                EditorGUILayout.BeginVertical("Box");
                 EditorGUI.indentLevel++;
+                
                 EditorGUILayout.PropertyField(m_SurfaceNoiseAmplitude, m_SurfaceNoiseAmplitudeGUI);
                 EditorGUILayout.PropertyField(m_SurfaceNoiseFrequency, m_SurfaceNoiseFrequencyGUI);
                 EditorGUILayout.PropertyField(m_SurfaceYPosition, m_SurfaceYPositionGUI);
                 EditorGUILayout.PropertyField(m_SurfaceNoiseSeed, m_SurfaceSeedGUI);
+                
                 EditorGUI.indentLevel--;
+                EditorGUILayout.EndVertical();
             }
 
             EditorGUILayout.PropertyField(m_EnableGlobalNoise, m_EnableGlobalNoiseGUI);
             if (m_EnableGlobalNoise.boolValue)
             {
+                EditorGUILayout.BeginVertical("Box");
                 EditorGUI.indentLevel++;
+                
                 EditorGUILayout.PropertyField(m_GlobalNoiseAmplitude, m_GlobalNoiseAmplitudeGUI);
                 EditorGUILayout.PropertyField(m_GlobalNoiseFrequency, m_GlobalNoiseFrequencyGUI);
                 EditorGUILayout.PropertyField(m_GlobalNoiseSeed, m_GlobalNoiseSeedGUI);
+                
                 EditorGUI.indentLevel--;
+                EditorGUILayout.EndVertical();
             }
 
             if (GUILayout.Button("Randomize Seed"))
             {
                 m_Target.RandomizeSeed();
             }
+
+            EditorGUILayout.PropertyField(m_EnableTerrainShapes, m_EnableTerrainShapesGUI);
 
             serializedObject.ApplyModifiedProperties();
         }

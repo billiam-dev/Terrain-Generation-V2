@@ -60,7 +60,7 @@ namespace LevelGeneration.Terrain
             {
                 GUI.Label(rect, $"Level idx: {levelIndex}");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"   Num shapes: {shapes.Count}");
+                GUI.Label(rect, $"   Num shapes: {intersectingTerrainShapes.Count}");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"   Loaded bricks: {bricks.Count}");
                 rect.y += k_SingleLineHeight;

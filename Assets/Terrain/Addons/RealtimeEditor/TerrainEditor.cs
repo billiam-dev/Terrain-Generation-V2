@@ -34,15 +34,19 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         public float GlobalNoiseAmplitude = 4.0f;
         public float GlobalNoiseFrequency = 0.02f;
         public int GlobalNoiseSeed = 0;
-        
+
+        public bool EnableTerrainShapes = false;
+
         ProceduralTerrain m_Terrain;
-        SDFScene m_Scene;
+
         List<ShapeBrush> m_ShapeBrushes;
+        SDFScene m_Scene;
+
         bool m_Initialized;
 
         void OnEnable()
         {
-            if (!m_Terrain)
+            if (m_Terrain == null)
                 m_Terrain = GetComponent<ProceduralTerrain>();
 
             Initialize();
@@ -51,7 +55,9 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
         void OnDisable()
         {
-            m_Terrain.UnloadScene();
+            if (m_Terrain != null)
+                m_Terrain.UnloadScene();
+
             Dispose();
         }
 
@@ -89,8 +95,14 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
 
         void UpdateScene()
         {
+            //
             // Surface Noise
+            //
+
             NoiseLayer surfaceNoise = m_Scene.surfaceNoise;
+
+            if (!surfaceNoise.IsEnabled.Equals(EnableSurface))
+                surfaceNoise.IsEnabled = EnableSurface;
 
             if (EnableSurface)
             {
@@ -107,14 +119,15 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
                 if (!surfaceNoise.Seed.Equals(SurfaceNoiseSeed))
                     surfaceNoise.Seed = SurfaceNoiseSeed;
             }
-            else
-            {
-                if (!surfaceNoise.Amplitude.Equals(0))
-                    surfaceNoise.Amplitude = 0;
-            }
 
+            //
             // Global Noise
+            //
+
             NoiseLayer globalNoise = m_Scene.globalNoise;
+
+            if (!globalNoise.IsEnabled.Equals(EnableGlobalNoise))
+                globalNoise.IsEnabled = EnableGlobalNoise;
 
             if (EnableGlobalNoise)
             {
@@ -127,26 +140,32 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
                 if (!globalNoise.Seed.Equals(GlobalNoiseSeed))
                     globalNoise.Seed = GlobalNoiseSeed;
             }
-            else
-            {
-                if (!globalNoise.Amplitude.Equals(0))
-                    globalNoise.Amplitude = 0;
-            }
 
+            //
             // Terrain Shapes
-            ShapeBrush[] activeShapeBrushes = GetComponentsInChildren<ShapeBrush>(false);
+            //
 
-            if (activeShapeBrushes.Length != m_ShapeBrushes.Count)
+            ShapeQueue terrainShapes = m_Scene.terrainShapes;
+
+            if (!terrainShapes.IsEnabled.Equals(EnableTerrainShapes))
+                terrainShapes.IsEnabled = EnableTerrainShapes;
+
+            if (EnableTerrainShapes)
             {
-                foreach (ShapeBrush shapeBrush in activeShapeBrushes)
+                ShapeBrush[] activeShapeBrushes = GetComponentsInChildren<ShapeBrush>(false);
+
+                if (activeShapeBrushes.Length != m_ShapeBrushes.Count)
                 {
-                    if (m_ShapeBrushes.Contains(shapeBrush))
-                        continue;
+                    foreach (ShapeBrush shapeBrush in activeShapeBrushes)
+                    {
+                        if (m_ShapeBrushes.Contains(shapeBrush))
+                            continue;
 
-                    m_ShapeBrushes.Add(shapeBrush);
-                    shapeBrush.OnDisabled += OnShapeBrushDisabled;
+                        m_ShapeBrushes.Add(shapeBrush);
+                        shapeBrush.OnDisabled += OnShapeBrushDisabled;
 
-                    m_Scene.terrainShapes.AddShape(shapeBrush.Shape);
+                        terrainShapes.AddShape(shapeBrush.Shape);
+                    }
                 }
             }
         }

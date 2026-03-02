@@ -1,10 +1,9 @@
+using LevelGeneration.Terrain.Scene;
 using System;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
-
-using LevelGeneration.Terrain.Scene;
 
 namespace LevelGeneration.Terrain.SDF
 {
@@ -46,17 +45,21 @@ namespace LevelGeneration.Terrain.SDF
             }
         }
 
-        NativeArray<DistanceFunctionData> m_DistanceFunctions;
-        int m_NumDistanceFunctions;
+        NativeArray<DistanceFunctionData> m_TerrainShapes;
+        NativeArray<int> m_TerrainShapeIndices;
 
         NoiseData m_SurfaceNoise;
         NoiseData m_GlobalNoise;
 
+        Allocator m_Allocator;
         bool m_IsAllocated;
 
         public readonly bool IsAllocated => m_IsAllocated;
 
-        public void Allocate(Shape[] terrainShapes, NoiseLayer surfaceNoise, NoiseLayer globalNoise, Allocator allocator)
+        /// <summary>
+        /// Allocate this sampler with an SDF scene.
+        /// </summary>
+        public void Allocate(SDFScene scene, Allocator allocator)
         {
             if (m_IsAllocated)
             {
@@ -64,13 +67,20 @@ namespace LevelGeneration.Terrain.SDF
                 return;
             }
 
-            // Terrain shapes.
-            m_NumDistanceFunctions = terrainShapes.Length;
-            m_DistanceFunctions = new(m_NumDistanceFunctions, allocator);
+            m_Allocator = allocator;
 
-            for (int i = 0; i < m_NumDistanceFunctions; i++)
+            //
+            // Terrain shapes.
+            //
+
+            Shape[] terrainShapes = scene.terrainShapes.Shapes;
+
+            int numTerrainShapes = terrainShapes.Length;
+            m_TerrainShapes = new(numTerrainShapes, m_Allocator);
+
+            for (int i = 0; i < numTerrainShapes; i++)
             {
-                m_DistanceFunctions[i] = new DistanceFunctionData(
+                m_TerrainShapes[i] = new DistanceFunctionData(
                     terrainShapes[i].InverseMatrix,
                     terrainShapes[i].Dimentions,
                     (uint)terrainShapes[i].DistanceFunction,
@@ -78,16 +88,24 @@ namespace LevelGeneration.Terrain.SDF
                 );
             }
 
-            // TODO: Runtime shapes.
-
+            //
             // Surface noise.
+            //
+
+            NoiseLayer surfaceNoise = scene.surfaceNoise;
+
             m_SurfaceNoise = new NoiseData(
                 surfaceNoise.Offset,
                 surfaceNoise.Amplitude,
                 surfaceNoise.Frequency,
                 surfaceNoise.Seed);
 
+            //
             // Global noise.
+            //
+
+            NoiseLayer globalNoise = scene.globalNoise;
+
             m_GlobalNoise = new NoiseData(
                 globalNoise.Offset,
                 globalNoise.Amplitude,
@@ -97,6 +115,9 @@ namespace LevelGeneration.Terrain.SDF
             m_IsAllocated = true;
         }
 
+        /// <summary>
+        /// Dispose this sampler.
+        /// </summary>
         public void Dispose()
         {
             if (!m_IsAllocated)
@@ -105,8 +126,28 @@ namespace LevelGeneration.Terrain.SDF
                 return;
             }
 
-            m_DistanceFunctions.Dispose();
+            m_TerrainShapes.Dispose();
+            m_TerrainShapeIndices.Dispose();
+
             m_IsAllocated = false;
+        }
+
+        /// <summary>
+        /// Assign a list of indices into the terrain shape queue to be evaluated by this sampler.
+        /// </summary>
+        public void AssignTerrainShapeIndices(int[] indices)
+        {
+            if (!m_IsAllocated)
+            {
+                Debug.LogWarning("Cannot assign shape indices to non-allocated density sampler.");
+                return;
+            }
+
+            if (m_TerrainShapeIndices.IsCreated)
+                m_TerrainShapeIndices.Dispose();
+
+            m_TerrainShapeIndices = new(indices.Length, m_Allocator);
+            m_TerrainShapeIndices.CopyFrom(indices);
         }
 
         /* 
@@ -118,29 +159,28 @@ namespace LevelGeneration.Terrain.SDF
         {
             float density = 0.0f;
 
-            // Initialize with surface noise.
-            density = SampleSurface(worldPosition, density);
+            density = SampleSurface(m_SurfaceNoise, worldPosition, density);            // Noise based surface
+            density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);  // User terrain shapes
+            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);             // 3D global noise
 
-            // Apply terrain forming shapes before the noise step.
-            density = SampleShapeQueueSmooth(worldPosition, density);
-
-            // Apply global noise.
-            density = Sample3DNoise(worldPosition, density);
-
-            // Apply in-game user shapes (CSG).
+            // TODO: Apply in-game user shapes (CSG).
             //density = SampleShapeQueueHard(worldPosition, density);
-            // ^TODO
 
             return density;
         }
 
-        // TODO
-        public readonly float SampleWithCache(float3 worldPosition)
+        public readonly float SampleWithIndices(float3 worldPosition)
         {
-            // Convert to 8 cell indices.
-            // Interpolate between values.
+            float density = 0.0f;
 
-            return 0.0f;
+            density = SampleSurface(m_SurfaceNoise, worldPosition, density);                                    // Noise based surface
+            density = SampleShapeQueueSmooth(m_TerrainShapes, m_TerrainShapeIndices, worldPosition, density);   // User terrain shapes with indices selection (avoid evaluating far away shapes in JOBs)
+            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);                                     // 3D global noise
+
+            // TODO: Apply in-game user shapes (CSG).
+            //density = SampleShapeQueueHard(worldPosition, density);
+
+            return density;
         }
 
         /*
@@ -149,30 +189,31 @@ namespace LevelGeneration.Terrain.SDF
         */
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly float SampleSurface(float3 worldPosition, float density)
+        static float SampleSurface(NoiseData surfaceData, float3 worldPosition, float density)
         {
             // TODO: seed
-            return density + Surface(worldPosition - m_SurfaceNoise.offset, m_SurfaceNoise.frequency, m_SurfaceNoise.amplitude);
+            return density + Surface(worldPosition - surfaceData.offset, surfaceData.frequency, surfaceData.amplitude);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly float Sample3DNoise(float3 worldPosition, float density)
+        static float Sample3DNoise(NoiseData noiseData, float3 worldPosition, float density)
         {
             // TODO: seed
-            return density + Noise(worldPosition + m_GlobalNoise.offset, m_GlobalNoise.frequency, m_GlobalNoise.amplitude);
+            return density + Noise(worldPosition + noiseData.offset, noiseData.frequency, noiseData.amplitude);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly float SampleShapeQueueSmooth(float3 worldPosition, float density)
+        static float SampleShapeQueueSmooth(NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
         {
             DistanceFunctionData sdf;
             float3 translatedPosition;
             float distance;
 
             // Apply pre-noise shapes.
-            for (int i = 0; i < m_NumDistanceFunctions; i++)
+            int numShapes = distanceFunctions.Length;
+            for (int i = 0; i < numShapes; i++)
             {
-                sdf = m_DistanceFunctions[i];
+                sdf = distanceFunctions[i];
 
                 // Get a translated position using the shape's inverse matrix (worldToLocal).
                 translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
@@ -196,16 +237,17 @@ namespace LevelGeneration.Terrain.SDF
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly float SampleShapeQueueHard(float3 worldPosition, float density)
+        static float SampleShapeQueueSmooth(NativeArray<DistanceFunctionData> distanceFunctions, NativeArray<int> indices, float3 worldPosition, float density)
         {
             DistanceFunctionData sdf;
             float3 translatedPosition;
             float distance;
 
             // Apply pre-noise shapes.
-            for (int i = 0; i < m_NumDistanceFunctions; i++)
+            int numShapes = indices.Length;
+            for (int i = 0; i < numShapes; i++)
             {
-                sdf = m_DistanceFunctions[i];
+                sdf = distanceFunctions[indices[i]];
 
                 // Get a translated position using the shape's inverse matrix (worldToLocal).
                 translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
@@ -222,15 +264,9 @@ namespace LevelGeneration.Terrain.SDF
                 };
 
                 // Mix the old and new distance values using smooth min.
-                density = math.min(density * sdf.minSign, distance) * sdf.minSign;
+                density = SmoothMin(density * sdf.minSign, distance, ProceduralTerrain.Smoothness) * sdf.minSign;
             }
 
-            return density;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public readonly float SampleDensityCache(float3 worldPosition, float density)
-        {
             return density;
         }
 

@@ -5,13 +5,8 @@ namespace LevelGeneration.Terrain.Scene
     /// </summary>
     public class SDFScene
     {
-        // public bool terrainShapesEnabled; // TODO
         public readonly ShapeQueue terrainShapes;
-
-        // public bool surfaceNoiseEnabled; // TODO
         public readonly NoiseLayer surfaceNoise;
-
-        // public bool globalNoiseEnabled; // TODO
         public readonly NoiseLayer globalNoise;
 
         // An option to use a pre-computed density map rather than the terrain shapes

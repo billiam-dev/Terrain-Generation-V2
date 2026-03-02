@@ -5,15 +5,19 @@ using UnityEngine;
 
 namespace LevelGeneration.Terrain.Scene
 {
+    /// <summary>
+    /// For an SDF scene, an ordered list of shapes applied to the distance field.
+    /// </summary>
     public class ShapeQueue
     {
         readonly List<Shape> shapes;            // Shapes to be applied in order to the terrain.
-        readonly List<Volume> modifiedVolumes;  // A list of volumes which have been modified by the shapes since the last terrain update.
-        bool isDirty;
+        readonly List<Volume> modifiedVolumes;  // A list of AABB which have been modified. Should be used to selectively recompute cached density values, then cleared.
 
         public Shape[] Shapes => shapes.ToArray();
 
         public Volume[] ModifiedVolumes => modifiedVolumes.ToArray();
+
+        bool isDirty;
 
         public bool IsDirty
         {
@@ -23,8 +27,22 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
-                modifiedVolumes.Clear();
                 isDirty = value;
+            }
+        }
+
+        bool isEnabled;
+
+        public bool IsEnabled
+        {
+            get
+            {
+                return isEnabled;
+            }
+            set
+            {
+                isEnabled = value;
+                isDirty = true;
             }
         }
 
@@ -45,7 +63,7 @@ namespace LevelGeneration.Terrain.Scene
             shapes.Add(shape);
             shape.OnModified += ShapeModified;
 
-            modifiedVolumes.Add(shape.ComputeVolume());
+            modifiedVolumes.Add(shape.Volume);
 
             isDirty = true;
 
@@ -63,7 +81,7 @@ namespace LevelGeneration.Terrain.Scene
             shape.OnModified -= ShapeModified;
             shapes.Remove(shape);
 
-            modifiedVolumes.Add(shape.ComputeVolume());
+            modifiedVolumes.Add(shape.Volume);
 
             isDirty = true;
 
@@ -78,6 +96,11 @@ namespace LevelGeneration.Terrain.Scene
             isDirty = true;
         }
 
+        public void ClearModifiedVolumes()
+        {
+            modifiedVolumes.Clear();
+        }
+
         public void Clear()
         {
             if (shapes.Count == 0)
@@ -86,11 +109,34 @@ namespace LevelGeneration.Terrain.Scene
             shapes.Clear();
             isDirty = true;
         }
+
+        public int[] GetIntersectingShapes(float3 positionWS)
+        {
+            List<int> intersectingShapeIndices = new();
+            int numShapes = shapes.Count;
+
+            Volume volume;
+            float3 position;
+            float3 halfSize;
+
+            for (int i = 0; i < numShapes; i++)
+            {
+                volume = shapes[i].Volume;
+                position = volume.position;
+                halfSize = volume.size * 0.5f;
+
+                if (math.any(positionWS > position + halfSize) || math.any(positionWS < position - halfSize))
+                    continue;
+
+                intersectingShapeIndices.Add(i);
+            }
+
+            return intersectingShapeIndices.ToArray();
+        }
     }
 
     /// <summary>
-    /// An object which represents a transformable SDF in a terrain scene.
-    /// Can be added to a terrain and then moved or modifed.
+    /// A single shape within an SDF scene.
     /// </summary>
     public class Shape
     {
@@ -102,6 +148,8 @@ namespace LevelGeneration.Terrain.Scene
 
         float3 dimentions;
 
+        Volume volume;
+
         public AffineTransform Matrix
         {
             get
@@ -110,10 +158,12 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
-                Volume prevVolume = ComputeVolume();
                 matrix = value;
                 inverseMatrix = math.inverse(value);
-                OnModified?.Invoke(prevVolume, ComputeVolume());
+
+                Volume previousVolume = volume;
+                volume = ComputeVolume();
+                OnModified?.Invoke(previousVolume, volume);
             }
         }
 
@@ -133,9 +183,11 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
-                Volume prevVolume = ComputeVolume();
                 distanceFunction = value;
-                OnModified?.Invoke(prevVolume, ComputeVolume());
+
+                Volume previousVolume = volume;
+                volume = ComputeVolume();
+                OnModified?.Invoke(previousVolume, volume);
             }
         }
 
@@ -147,9 +199,11 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
-                Volume prevVolume = ComputeVolume();
                 blendMode = value;
-                OnModified?.Invoke(prevVolume, ComputeVolume());
+
+                Volume previousVolume = volume;
+                volume = ComputeVolume();
+                OnModified?.Invoke(previousVolume, volume);
             }
         }
 
@@ -161,12 +215,24 @@ namespace LevelGeneration.Terrain.Scene
             }
             set
             {
-                Volume prevVolume = ComputeVolume();
                 dimentions = value;
-                OnModified?.Invoke(prevVolume, ComputeVolume());
+
+                Volume previousVolume = volume;
+                volume = ComputeVolume();
+                OnModified?.Invoke(previousVolume, volume);
             }
         }
 
+        public Volume Volume
+        {
+            get
+            {
+                return volume;
+            }
+        }
+
+        // Event which is fired whenever properties for this shape are modified.
+        // Contains old and new volume parameters for areas which will need to be updated to reflect the property change.
         public Action<Volume, Volume> OnModified;
 
         // Multiplier for how much the smoothness value should extend the brick volume effected by this shape.
@@ -182,6 +248,8 @@ namespace LevelGeneration.Terrain.Scene
             this.distanceFunction = distanceFunction;
             this.blendMode = blendMode;
             this.dimentions = dimentions;
+
+            volume = ComputeVolume();
         }
 
         public Shape(float3 translation, quaternion rotation, float3 scale, DistanceFunction distanceFunction, BlendMode blendMode, float dimention1, float dimention2, float dimention3)
@@ -208,11 +276,10 @@ namespace LevelGeneration.Terrain.Scene
         }
 
         /// <summary>
-        /// Compute a world space AABB for the shape.
+        /// Computes a world space AABB for this shape, in world space.
         /// </summary>
-        public Volume ComputeVolume()
+        Volume ComputeVolume()
         {
-            // Compute an accurate bounding volume for the shape in world space.
             float3 boundsVolume = 0;
             switch (distanceFunction)
             {
@@ -232,6 +299,7 @@ namespace LevelGeneration.Terrain.Scene
             }
 
             // Pad the volume to account for the smoothing factor around shapes.
+            // TODO: Add bool IsSmooth to this shape. CSG shapes do not run through the SmoothMin function so therefore the bounds does not need to be extended.
             boundsVolume += ProceduralTerrain.Smoothness * k_SmoothnessVolumeExtentConstant;
 
             // Translate the volume by my matrix.

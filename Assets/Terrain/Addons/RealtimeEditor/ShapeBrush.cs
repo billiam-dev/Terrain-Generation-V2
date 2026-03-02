@@ -169,13 +169,15 @@ namespace LevelGeneration.Terrain.Addons.RealtimeEditor
         {
             Gizmos.matrix = Matrix4x4.identity;
 
-            Volume shapeVolume = m_Shape.ComputeVolume();
+            Volume shapeVolume = m_Shape.Volume;
+            float3 position = shapeVolume.position;
+            float3 size = shapeVolume.size;
 
             Gizmos.color = new(0, 1, 0, 0.1f);
-            Gizmos.DrawWireCube(shapeVolume.position, shapeVolume.size);
+            Gizmos.DrawWireCube(position, size);
 
             Gizmos.color = new(0, 1, 0, 0.05f);
-            Gizmos.DrawCube(shapeVolume.position, shapeVolume.size);
+            Gizmos.DrawCube(position, size);
         }
 #endif
     }

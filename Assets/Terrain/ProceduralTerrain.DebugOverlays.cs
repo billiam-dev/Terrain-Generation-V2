@@ -132,6 +132,8 @@ namespace LevelGeneration.Terrain
 
             public void DrawShapeVolumes()
             {
+                // TODO: repair now that bricks contain a list of shape indices.
+                /*
                 HashSet<int3> bricksInShapeVolumes = new();
 
                 foreach (Shape shape in shapes)
@@ -154,6 +156,7 @@ namespace LevelGeneration.Terrain
 
                     Gizmos.DrawCube(bricksCentre, worldBrickSize);
                 }
+                */
             }
 
             public void DrawBounds()
