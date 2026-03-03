@@ -5,7 +5,7 @@ using UnityEngine.Rendering;
 namespace TerrainSystem.Meshing
 {
     [StructLayout(LayoutKind.Sequential)]
-    public struct Vertex
+    struct Vertex
     {
         public float3 position;
         public float3 normal;

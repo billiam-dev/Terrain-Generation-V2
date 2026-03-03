@@ -11,7 +11,7 @@ namespace TerrainSystem.Meshing
     /// A helper object to handle a single meshing handler instance.
     /// Allocates and queues a single transvoxel meshing job at a time.
     /// </summary>
-    public class ChunkMesher : IDisposable
+    class ChunkMesher : IDisposable
     {
         NativeList<Vertex> m_Vertices;
         NativeList<ushort> m_Indices;

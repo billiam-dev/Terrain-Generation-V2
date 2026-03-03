@@ -5,7 +5,7 @@ using UnityEngine;
 namespace TerrainSystem.Addons.RealtimeEditor
 {
     [CustomEditor(typeof(TerrainEditor))]
-    public class TerrainEditorEditor : Editor
+    class TerrainEditorEditor : Editor
     {
         // Properties
         SerializedProperty m_InitialDensity;

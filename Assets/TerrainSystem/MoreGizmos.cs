@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace TerrainSystem
 {
-    public static class MoreGizmos
+    static class MoreGizmos
     {
         public static void DrawWireSemiSphere(Vector3 centre, float radius, float slice)
         {

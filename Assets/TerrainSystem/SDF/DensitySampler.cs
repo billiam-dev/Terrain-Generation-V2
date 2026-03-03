@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace TerrainSystem.SDF
 {
-    public struct DensitySampler : IDisposable
+    struct DensitySampler : IDisposable
     {
         /*
          * Internal SDF data structs.
@@ -50,6 +50,9 @@ namespace TerrainSystem.SDF
 
         NoiseData m_SurfaceNoise;
         NoiseData m_GlobalNoise;
+
+        NativeArray<DistanceFunctionData> m_CSGShapes;
+        // TODO: CSG shape indices.
 
         Allocator m_Allocator;
         bool m_IsAllocated;
@@ -126,6 +129,25 @@ namespace TerrainSystem.SDF
                 globalNoise.Frequency,
                 offset);
 
+            //
+            // SSG Shapes
+            //
+
+            Shape[] csgShapes = scene.csgShapes.Shapes;
+
+            int numCSGShapes = csgShapes.Length;
+            m_CSGShapes = new(numCSGShapes, m_Allocator);
+
+            for (int i = 0; i < numCSGShapes; i++)
+            {
+                m_CSGShapes[i] = new DistanceFunctionData(
+                    csgShapes[i].InverseMatrix,
+                    csgShapes[i].Dimentions,
+                    (uint)csgShapes[i].DistanceFunction,
+                    csgShapes[i].BlendMode == BlendMode.Subtractive
+                );
+            }
+
             m_IsAllocated = true;
         }
 
@@ -142,6 +164,8 @@ namespace TerrainSystem.SDF
 
             m_TerrainShapes.Dispose();
             m_TerrainShapeIndices.Dispose();
+
+            m_CSGShapes.Dispose();
 
             m_IsAllocated = false;
         }
@@ -176,9 +200,7 @@ namespace TerrainSystem.SDF
             density = SampleSurface(m_SurfaceNoise, worldPosition, density);
             density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);
             density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
-
-            // TODO: Apply in-game user shapes (CSG).
-            //density = SampleShapeQueueHard(worldPosition, density);
+            density = SampleShapeQueueHard(m_CSGShapes, worldPosition, density);
 
             return density;
         }
@@ -190,9 +212,7 @@ namespace TerrainSystem.SDF
             density = SampleSurface(m_SurfaceNoise, worldPosition, density);
             density = SampleShapeQueueSmooth(m_TerrainShapes, m_TerrainShapeIndices, worldPosition, density);
             density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
-
-            // TODO: Apply in-game user shapes (CSG).
-            //density = SampleShapeQueueHard(worldPosition, density);
+            density = SampleShapeQueueHard(m_CSGShapes, worldPosition, density);
 
             return density;
         }
@@ -307,6 +327,40 @@ namespace TerrainSystem.SDF
 
                 // Mix the old and new distance values using smooth min.
                 density = SmoothMin(density * sdf.minSign, distance, ProceduralTerrain.Smoothness) * sdf.minSign;
+            }
+
+            return density;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static float SampleShapeQueueHard(NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
+        {
+            DistanceFunctionData sdf;
+            float3 translatedPosition;
+            float distance;
+
+            // Apply pre-noise shapes.
+            int numShapes = distanceFunctions.Length;
+            for (int i = 0; i < numShapes; i++)
+            {
+                sdf = distanceFunctions[i];
+
+                // Get a translated position using the shape's inverse matrix (worldToLocal).
+                translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
+
+                // Calculate the distance value using the SDF function of the current shape.
+                distance = sdf.functionID switch
+                {
+                    0 => Sphere(translatedPosition, sdf.dimentions.x),
+                    1 => SemiSphere(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                    2 => Capsule(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                    3 => Torus(translatedPosition, sdf.dimentions.x, sdf.dimentions.y),
+                    4 => Cube(translatedPosition, sdf.dimentions.x, sdf.dimentions.y, sdf.dimentions.z),
+                    _ => 0
+                };
+
+                // Mix the old and new distance values using smooth min.
+                density = math.min(density * sdf.minSign, distance) * sdf.minSign;
             }
 
             return density;

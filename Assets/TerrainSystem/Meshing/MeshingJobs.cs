@@ -17,7 +17,7 @@ namespace TerrainSystem.Meshing
     #region JOBs
 
     [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    public struct CoreMeshingJob : IJob
+    struct CoreMeshingJob : IJob
     {
         // Input terrain data
         [ReadOnly] public int3 chunkIndex;            // Index into the density brick map at this clipmap level.
@@ -202,7 +202,7 @@ namespace TerrainSystem.Meshing
     }
 
     [BurstCompile(OptimizeFor = OptimizeFor.Performance, FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low, CompileSynchronously = true, DisableSafetyChecks = true)]
-    public struct TransitionMeshingJob : IJob
+    struct TransitionMeshingJob : IJob
     {
         // Input terrain data
         [ReadOnly] public int3 chunkIndex;            // Index into the density brick map at this clipmap level.
@@ -430,7 +430,7 @@ namespace TerrainSystem.Meshing
         }
     }
 
-    public static class MeshingHelpers
+    static class MeshingHelpers
     {
         /// <summary>
         /// How much of a full cell is shifted to make room for transition cells.

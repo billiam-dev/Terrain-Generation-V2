@@ -1,6 +1,6 @@
 namespace TerrainSystem
 {
-    public static class ShaderIDs
+    static class ShaderIDs
     {
         public static readonly string PackedNeighborLOD = "_PackedNeighborLOD";
         

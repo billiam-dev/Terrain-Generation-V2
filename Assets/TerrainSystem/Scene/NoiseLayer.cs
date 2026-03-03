@@ -3,25 +3,11 @@ namespace TerrainSystem.Scene
     /// <summary>
     /// For an SDF scene, a noise layer applied to the distance field.
     /// </summary>
-    public class NoiseLayer
+    public class NoiseLayer : SDFLayer
     {
         float amplitude;
         float frequency;
         int seed;
-
-        bool isDirty;
-
-        public bool IsDirty
-        {
-            get
-            {
-                return isDirty;
-            }
-            set
-            {
-                isDirty = value;
-            }
-        }
 
         public float Amplitude
         {

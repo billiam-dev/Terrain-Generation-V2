@@ -20,6 +20,9 @@ namespace TerrainSystem
     [DisallowMultipleComponent]
     public partial class ProceduralTerrain : MonoBehaviour
     {
+        // TODO: track down yet another memory leak.
+        // Unity keeps crashing with 93% pagefile memory usage or somat >:(
+
         /// <summary>
         /// Apply a material to the terrain.
         /// </summary>
@@ -212,6 +215,17 @@ namespace TerrainSystem
                 m_Scene.terrainShapes.ClearModifiedVolumes();
             }
 
+            if (m_Scene.csgShapes.IsDirty)
+            {
+                foreach (Volume volume in m_Scene.csgShapes.ModifiedVolumes)
+                {
+                    foreach (Brickmap brickmap in m_BrickmapLevels)
+                        brickmap.MarkVolumeAsModified(volume);
+                }
+
+                m_Scene.csgShapes.ClearModifiedVolumes();
+            }
+
             // Update brickmap levels.
             float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
 
@@ -266,98 +280,19 @@ namespace TerrainSystem
         }
 
         /// <summary>
-        /// Sample the density cache at the given indices.
+        /// Terraform the terrain with a given shape.
         /// </summary>
-        public float SampleDensity(float3 positionWS)
+        public void Terraform(Shape shape)
         {
-            // Scale position by the world scale.
-            positionWS *= 1.0f / k_WorldScale;
-
-            // Allocate a temporary density sampler.
-            DensitySampler sampler = new();
-            sampler.Allocate(m_Scene, Allocator.Temp);
-
-            // Sample the SDF at the given position.
-            float value = sampler.Sample(positionWS);
-
-            // Dispose the sampler and return the result.
-            sampler.Dispose();
-
-            return value;
-        }
-
-        /// <summary>
-        /// Raytraces the terrain to find the surface position.
-        /// Returns a structure containing the hit position and its distance to the terrain.
-        /// </summary>
-        public RaymarchResult FindSurface(float3 positionWS, float3 direction, float minDistance = 0.1f)
-        {
-            // Ensure direction is normalized.
-            direction = math.normalize(direction);
-
-            // Scale origin position by the world scale.
-            positionWS *= 1.0f / k_WorldScale;
-
-            // Allocate a temporary density sampler.
-            DensitySampler sampler = new();
-            sampler.Allocate(m_Scene, Allocator.Temp);
-
-            // Step forward by the sampled distance value until we are acceptably close to the surface.
-            float distance = sampler.Sample(positionWS);
-
-            int step = 0;
-            while (distance > minDistance && step < k_MaxRaymarchSteps)
+            if (m_Scene == null)
             {
-                positionWS += direction * distance;
-                distance = sampler.Sample(positionWS);
-                step++;
+                Debug.LogWarning("Cannot terraform terrain if no scene is loaded!");
+                return;
             }
 
-            // Dispose the temporary sampler.
-            sampler.Dispose();
-
-            // Re-scale and return the position.
-            return new RaymarchResult(positionWS * k_WorldScale, distance);
-        }
-
-        /// <summary>
-        /// Raytraces the terrain to find the surface position.
-        /// Returns a list of visited positions and their distances to the terrain.
-        /// </summary>
-        public List<RaymarchResult> FindSurfaceWithSteps(float3 positionWS, float3 direction, float minDistance = 0.1f)
-        {
-            // Ensure direction is normalized.
-            direction = math.normalize(direction);
-
-            // Scale origin position by the world scale.
-            positionWS *= 1.0f / k_WorldScale;
-
-            // Allocate a temporary density sampler.
-            DensitySampler sampler = new();
-            sampler.Allocate(m_Scene, Allocator.Temp);
-
-            // Step forward by the sampled distance value until we are acceptably close to the surface.
-            float distance = sampler.Sample(positionWS);
-
-            List<RaymarchResult> positions = new()
-            {
-                new RaymarchResult(positionWS * k_WorldScale, distance) // Initial position.
-            };
-
-            int step = 0;
-            while (distance > minDistance && step < k_MaxRaymarchSteps)
-            {
-                positionWS += direction * distance;
-                distance = sampler.Sample(positionWS);
-                positions.Add(new RaymarchResult(positionWS * k_WorldScale, distance));
-                step++;
-            }
-
-            // Dispose the temporary sampler.
-            sampler.Dispose();
-
-            // Re-scale and return the position.
-            return positions;
+            // TODO: The SDG Queue probably dosn't need the whole terrain shape treatment for gameplay purposes.
+            // We could avoid the matrix stuff, smoothness-based volume increase and, should we limit users to only spheres, the switch statement which would speed up the JOB massively.
+            m_Scene.csgShapes.AddShape(shape);
         }
 
         /// <summary>
@@ -912,8 +847,6 @@ namespace TerrainSystem
 
             public int3 OriginIndex => originIndex;
 
-            public List<int> IntersectingShapes => intersectingTerrainShapes; // TODO: only check intersection against previous brickmap level shapes.
-
             readonly int3[] NeighborOffsets =
             {
                 new(1, 0, 0),  //  x
@@ -1210,18 +1143,6 @@ namespace TerrainSystem
 
                 return bytes;
             }
-        }
-    }
-
-    public readonly struct RaymarchResult
-    {
-        public readonly float3 position;
-        public readonly float distance;
-
-        public RaymarchResult(float3 position, float distance)
-        {
-            this.position = position;
-            this.distance = distance;
         }
     }
 }

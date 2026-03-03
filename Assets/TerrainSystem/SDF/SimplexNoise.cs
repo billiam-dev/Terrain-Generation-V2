@@ -23,7 +23,7 @@ namespace TerrainSystem.SDF
     // terms remain unchanged.
     //
 
-    public static class SimplexNoise
+    static class SimplexNoise
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float Mod(float x, float y) { return x - y * math.floor(x / y); }

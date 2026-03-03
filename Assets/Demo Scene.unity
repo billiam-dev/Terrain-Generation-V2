@@ -180,8 +180,9 @@ GameObject:
   - component: {fileID: 330585545}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
-  - component: {fileID: 330585548}
   - component: {fileID: 330585549}
+  - component: {fileID: 330585551}
+  - component: {fileID: 330585550}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -307,23 +308,6 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!114 &330585548
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 618b0e3f6c65dd247a4a016150006c57, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.FreeCamera
-  m_LookSpeedController: 120
-  m_LookSpeedMouse: 4
-  m_MoveSpeed: 10
-  m_MoveSpeedIncrement: 2.5
-  m_Turbo: 10
 --- !u!114 &330585549
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -336,6 +320,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1808ecab4d2753f40849660d87a92c6e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.Meshing.TerrainObserver
+--- !u!114 &330585550
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 51811625bd32f0643a3c7b50b82b3a71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: TerrainSystem::TerrainSystem.Addons.Terraformer.Terraformer
+  m_Terrain: {fileID: 337805763}
+  m_InputDeadTime: 0.05
+--- !u!114 &330585551
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5073b495171353d4fa0d72ca4ace7bc4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FreeCamera
+  m_MoveSpeed: 10
+  m_MouseSensitivity: 4
 --- !u!1 &337805761
 GameObject:
   m_ObjectHideFlags: 0
@@ -734,11 +746,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -11
+      value: -0.309
       objectReference: {fileID: 0}
     - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: -40.26
       objectReference: {fileID: 0}
     - target: {fileID: 7644298143091930887, guid: e5f880eb48d359d489982ec649bd888f, type: 3}
       propertyPath: m_LocalRotation.w
@@ -822,6 +834,98 @@ MonoBehaviour:
   m_Dimention1: 12
   m_Dimention2: 0
   m_Dimention3: 0
+--- !u!1 &1669969210
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1669969211}
+  - component: {fileID: 1669969212}
+  m_Layer: 0
+  m_Name: Terrain Sampler
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!4 &1669969211
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1669969210}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -60.2, y: 31.8, z: 40.68}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1669969212
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1669969210}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1473bd5c3526291448bc57b5ad06b314, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: TerrainSystem::TerrainSystem.Addons.Test.TerrainSampler
+  m_Terrain: {fileID: 337805763}
+--- !u!1 &1902672238
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1902672239}
+  - component: {fileID: 1902672240}
+  m_Layer: 0
+  m_Name: Terrain Raycaster
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!4 &1902672239
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1902672238}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.44287926, y: 0.681162, z: 0.22197524, w: -0.5390763}
+  m_LocalPosition: {x: -47.6, y: 50.2, z: -18.3}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 10.084, y: -108.982, z: -418.858}
+--- !u!114 &1902672240
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1902672238}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3bf3569c60d665d4a8753b4897707d00, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: TerrainSystem::TerrainSystem.Addons.Test.TerrainRaycaster
+  m_Terrain: {fileID: 337805763}
+  m_MinDistance: 10
+  m_ShowSteps: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -831,3 +935,5 @@ SceneRoots:
   - {fileID: 337805762}
   - {fileID: 1103205056}
   - {fileID: 346887004}
+  - {fileID: 1902672239}
+  - {fileID: 1669969211}

@@ -8,7 +8,7 @@ namespace TerrainSystem.Meshing
     /// <summary>
     /// Provides a pool of chunk meshers so that meshing tasks can be ran in parallel.
     /// </summary>
-    public class BatchChunkMesher : IDisposable
+    class BatchChunkMesher : IDisposable
     {
         const int k_PoolSize = 16;      // The size of the ChunkMesher pool.
 

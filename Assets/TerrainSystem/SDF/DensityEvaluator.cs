@@ -7,7 +7,7 @@ using Unity.Mathematics;
 
 namespace TerrainSystem.SDF
 {
-    public class DensityEvaluator : IDisposable
+    class DensityEvaluator : IDisposable
     {
         NativeArray<float> m_DensityData;
         int m_DensityArraySize;

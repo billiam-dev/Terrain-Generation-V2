@@ -8,7 +8,7 @@ namespace TerrainSystem.Scene
     /// <summary>
     /// For an SDF scene, an ordered list of shapes applied to the distance field.
     /// </summary>
-    public class ShapeQueue
+    public class ShapeQueue : SDFLayer
     {
         readonly List<Shape> shapes;            // Shapes to be applied in order to the terrain.
         readonly List<Volume> modifiedVolumes;  // A list of AABB which have been modified. Should be used to selectively recompute cached density values, then cleared.
@@ -18,20 +18,6 @@ namespace TerrainSystem.Scene
         public int Count => shapes.Count;
 
         public Volume[] ModifiedVolumes => modifiedVolumes.ToArray();
-
-        bool isDirty;
-
-        public bool IsDirty
-        {
-            get
-            {
-                return isDirty;
-            }
-            set
-            {
-                isDirty = value;
-            }
-        }
 
         public ShapeQueue()
         {

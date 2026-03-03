@@ -9,7 +9,7 @@ namespace TerrainSystem.Addons.RealtimeEditor
 {
     [CanEditMultipleObjects]
     [CustomEditor(typeof(ShapeBrush), true)]
-    public class ShapeBrushEditor : Editor
+    class ShapeBrushEditor : Editor
     {
         SerializedProperty m_DistanceFunction;
         SerializedProperty m_BlendMode;

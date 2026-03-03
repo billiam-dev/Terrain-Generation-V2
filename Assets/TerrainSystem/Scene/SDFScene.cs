@@ -23,13 +23,33 @@ namespace TerrainSystem.Scene
             terrainShapes = new();
             surfaceNoise = new();
             globalNoise = new();
+            csgShapes = new();
         }
 
         public void Clear()
         {
+            baseLayer.Value = 0;
             terrainShapes.Clear();
             surfaceNoise.Clear();
             globalNoise.Clear();
+            csgShapes.Clear();
+        }
+    }
+
+    public abstract class SDFLayer
+    {
+        protected bool isDirty;
+
+        public bool IsDirty
+        {
+            get
+            {
+                return isDirty;
+            }
+            set
+            {
+                isDirty = value;
+            }
         }
     }
 }

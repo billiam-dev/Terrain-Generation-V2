@@ -16,7 +16,7 @@ namespace TerrainSystem
     ///     print(myTimer);
     ///
     /// </summary>
-    public class Stopwatch
+    class Stopwatch
     {
         public static void Start(ref double timer) => timer = Time.realtimeSinceStartupAsDouble;
 
@@ -34,7 +34,7 @@ namespace TerrainSystem
         }
     }
 
-    public class MeanTime
+    class MeanTime
     {
         readonly double[] times;
         int i;

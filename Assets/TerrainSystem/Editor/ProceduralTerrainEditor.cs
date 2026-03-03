@@ -5,7 +5,7 @@ using UnityEngine;
 namespace TerrainSystem
 {
     [CustomEditor(typeof(ProceduralTerrain))]
-    public partial class ProceduralTerrainEditor : Editor
+    partial class ProceduralTerrainEditor : Editor
     {
         // Properties
         SerializedProperty m_Material;

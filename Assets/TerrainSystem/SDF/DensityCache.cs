@@ -4,7 +4,7 @@ using Unity.Collections;
 namespace TerrainSystem.SDF
 {
     // So this becomes readonly struct DensityCacheData, in DensitySampler like DistanceFuncData & NoiseData.
-    public struct DensityCache : IDisposable
+    struct DensityCache : IDisposable
     {
         /// <summary>
         /// The size of a single region in bricks per axis.
