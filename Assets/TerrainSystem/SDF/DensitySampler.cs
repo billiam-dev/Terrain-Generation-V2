@@ -236,10 +236,13 @@ namespace TerrainSystem.SDF
         /*
          * Sampler functions.
          * The density field can be created by combining several sampling methods such as shapes, noise or cached data.
+         * 
+         * Note: in keyword used to pass readonly structs as [In][IsReadonly] ref
+         * Just in case the AggressiveInlining dosn't eliminate all of this.
         */
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float SampleSurface(NoiseData surfaceData, float3 worldPosition, float density)
+        static float SampleSurface(in NoiseData surfaceData, float3 worldPosition, float density)
         {
 #if UNITY_EDITOR
             // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the build.
@@ -251,7 +254,7 @@ namespace TerrainSystem.SDF
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float Sample3DNoise(NoiseData noiseData, float3 worldPosition, float density)
+        static float Sample3DNoise(in NoiseData noiseData, float3 worldPosition, float density)
         {
 #if UNITY_EDITOR
             // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the build.
@@ -263,7 +266,7 @@ namespace TerrainSystem.SDF
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float SampleShapeQueueSmooth(NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
+        static float SampleShapeQueueSmooth(in NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
         {
             DistanceFunctionData sdf;
             float3 translatedPosition;
@@ -297,7 +300,7 @@ namespace TerrainSystem.SDF
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float SampleShapeQueueHard(NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
+        static float SampleShapeQueueHard(in NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
         {
             DistanceFunctionData sdf;
             float3 translatedPosition;
@@ -331,7 +334,7 @@ namespace TerrainSystem.SDF
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float SampleShapeQueueHardWithFilter(NativeArray<DistanceFunctionData> distanceFunctions, NativeArray<int> indices, float3 worldPosition, float density)
+        static float SampleShapeQueueHardWithFilter(in NativeArray<DistanceFunctionData> distanceFunctions, NativeArray<int> indices, float3 worldPosition, float density)
         {
             DistanceFunctionData sdf;
             float3 translatedPosition;

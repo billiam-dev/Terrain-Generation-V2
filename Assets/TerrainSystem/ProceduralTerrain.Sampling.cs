@@ -8,6 +8,9 @@ namespace TerrainSystem
 {
     public partial class ProceduralTerrain : MonoBehaviour
     {
+        // The maximum number of steps the RaytraceSurface function will take to find the terrain surface.
+        const int k_MaxRaymarchSteps = 20;
+
         /// <summary>
         /// Sample the density cache at the given indices.
         /// </summary>

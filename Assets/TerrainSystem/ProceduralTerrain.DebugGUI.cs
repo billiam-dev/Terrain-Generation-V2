@@ -66,7 +66,7 @@ namespace TerrainSystem
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"   Update time: {Stopwatch.ToMilliseconds(updateTime)}ms");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"   Major update time: {Stopwatch.ToMilliseconds(majorUpdateTime)}ms");
+                GUI.Label(rect, $"   Origin shift time: {Stopwatch.ToMilliseconds(originShiftTime)}ms");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"   Render time: {Stopwatch.ToMilliseconds(renderTime)}ms");
                 rect.y += k_SingleLineHeight * 2.0f;

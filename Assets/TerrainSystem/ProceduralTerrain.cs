@@ -74,6 +74,8 @@ namespace TerrainSystem
         DensityEvaluator m_DensityEvaluator;
         BatchChunkMesher m_Mesher;
 
+        float3 m_ObserverPosition;
+        float m_MinOriginUpdateDelta;
         bool m_Initialized;
 
         // Debug info
@@ -82,17 +84,14 @@ namespace TerrainSystem
         double m_UpdateTime;
         double m_RenderTime;
 
-        const float k_WorldScale = 1.0f;      // The size of a single cell in world units, effectively controls the scale of the whole terrain. TODO: this is broken now?
-        const int k_BrickSize = 16;           // The number of cells per axis contained in a single brick.
-        const int k_BrickmapLevelSize = 8;    // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
-        const int k_NumBrickmapLevels = 5;    // The number of brickmap levels, each doubling the grid size of the previous level.
+        const float k_WorldScale = 1.0f;    // The size of a single cell in world units, effectively controls the scale of the whole terrain. TODO: this is broken now?
+        const int k_BrickSize = 16;         // The number of cells per axis contained in a single brick.
+        const int k_BrickmapLevelSize = 8;  // The number of bricks per axis of a single brickmap level that can be converted into meshes and rendered.
+        const int k_NumBrickmapLevels = 5;  // The number of brickmap levels, each doubling the grid size of the previous level.
 
         // The amount of blending applied between terrain-forming shapes.
         // Does not apply to the CSG shapes users apply by mining or building upon the terrain.
         public const float Smoothness = 6.0f;
-
-        // The maximum number of steps the FindSurface function will take to find the terrain surface.
-        const int k_MaxRaymarchSteps = 20;
 
         void OnEnable()
         {
@@ -159,6 +158,8 @@ namespace TerrainSystem
 
             m_DensityEvaluator.Allocate(k_BrickSize);
             m_Mesher.Allocate();
+
+            m_MinOriginUpdateDelta = k_BrickSize * k_WorldScale;
 
             for (int i = 0; i < k_NumBrickmapLevels; i++)
                 m_BrickmapLevels[i] = new(k_BrickmapLevelSize, k_BrickSize, i, k_WorldScale);
@@ -228,12 +229,26 @@ namespace TerrainSystem
                 m_Scene.csgShapes.ClearModifiedVolumes();
             }
 
-            // Update brickmap levels.
+            // Update brickmaps origin.
             float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
+            // TODO: when doing final tests: compare like footage of moving through terrain to see if this makes any observable difference (expeted result: no observable change, only speedup)
+            if (math.length(observerPosition - m_ObserverPosition) > m_MinOriginUpdateDelta)
+            {
+                m_ObserverPosition = observerPosition;
 
-            m_BrickmapLevels[0].Update(camera, observerPosition, 0, m_Scene, m_DensityEvaluator, m_Mesher);
-            for (int i = 1; i < k_NumBrickmapLevels; i++)
-                m_BrickmapLevels[i].Update(camera, observerPosition, m_BrickmapLevels[i - 1].OriginIndex, m_Scene, m_DensityEvaluator, m_Mesher);
+                m_BrickmapLevels[0].UpdateOrigin(observerPosition, 0);
+                Brickmap previousBrickmap = m_BrickmapLevels[0];
+
+                for (int i = 1; i < k_NumBrickmapLevels; i++)
+                {
+                    m_BrickmapLevels[i].UpdateOrigin(observerPosition, previousBrickmap.OriginIndex);
+                    previousBrickmap = m_BrickmapLevels[i];
+                }
+            }
+
+            // Update brickmaps density.
+            for (int i = 0; i < k_NumBrickmapLevels; i++)
+                m_BrickmapLevels[i].UpdateDensity(camera, m_Scene, m_DensityEvaluator, m_Mesher);
 
             // Execute meshing tasks queued this frame.
             if (m_Mesher.NumPendingTasks > 0)
@@ -244,6 +259,7 @@ namespace TerrainSystem
             m_Scene.surfaceNoise.IsDirty = false;
             m_Scene.globalNoise.IsDirty = false;
             m_Scene.terrainShapes.IsDirty = false;
+            m_Scene.csgShapes.IsDirty = false;
 
             Stopwatch.End(ref m_UpdateTime);
         }
@@ -265,11 +281,18 @@ namespace TerrainSystem
         }
 
         /// <summary>
-        /// Load a SDF scene.
+        /// Load an SDF scene.
         /// The terrain will automatically respond to changes in the scene if it is flagged as dirty.
         /// </summary>
         public void LoadScene(SDFScene scene)
         {
+            if (scene == null)
+            {
+                Debug.LogWarning("Failed to load null scene.");
+                return;
+            }
+
+            m_ObserverPosition = float.MaxValue;
             m_Scene = scene;
         }
 
@@ -278,6 +301,12 @@ namespace TerrainSystem
         /// </summary>
         public void UnloadScene()
         {
+            if (m_Scene == null)
+            {
+                Debug.LogWarning("Failed to unload scene, no scene loaded.");
+                return;
+            }
+
             m_Scene = null;
         }
 
@@ -772,8 +801,6 @@ namespace TerrainSystem
 
                 int[] FindIntersectingShapeIndices(ShapeQueue shapeQueue, List<int> checkIndices)
                 {
-                    // TODO: evaluate speed of this function, perhaps it could be ran in parallel in a job, if it is slow.
-
                     Shape[] shapes = shapeQueue.Shapes;
                     List<int> returnIndices = new();
 
@@ -840,11 +867,12 @@ namespace TerrainSystem
 
             int3 originIndex;                  // The global brick index in which this map currently originates.
             int3 lowerGridOffset;              // The local offset of the brickmap contained within this one.
+            bool originHasShifted; // TEMP
 
             //bool isUpdating; // TODO: use this flag to spread density & meshing jobs over multiple frames. Do not allow the origin of higher brickmaps to shift until the lower one has finished updating.
 
             double updateTime;
-            double majorUpdateTime;
+            double originShiftTime;
             double renderTime;
 
             public int3 OriginIndex => originIndex;
@@ -897,32 +925,27 @@ namespace TerrainSystem
                 intersectingCSGShapes.Clear();
             }
 
-            public void Update(Camera observerCamera, float3 observerPosition, int3 lowerGridOriginIndex, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
+            public void UpdateOrigin(float3 observerPosition, int3 lowerGridOriginIndex)
             {
-                Stopwatch.Start(ref updateTime);
-
                 // Calculate the brick index in which the observer is located (local within this brickmap level).
                 int3 newOriginIndex = GetOriginIndex(observerPosition);
                 int3 newLowerGridOffset = GetLowerGridOffset(lowerGridOriginIndex, newOriginIndex);
 
-                bool originHasMoved = math.any(newOriginIndex != originIndex);
-                bool lowerGridHasMoved = math.any(newLowerGridOffset != lowerGridOffset);
-
-                bool isMajorUpdate = originHasMoved || lowerGridHasMoved;
-                if (isMajorUpdate)
-                    Stopwatch.Start(ref majorUpdateTime);
+                bool changeDetected = math.any(newOriginIndex != originIndex) ||
+                                      math.any(newLowerGridOffset != lowerGridOffset);
 
                 // If the origin index is different this frame; update loaded bricks.
-                if (originHasMoved || lowerGridHasMoved)
+                if (changeDetected)
                 {
-                    // Update origin index.
+                    Stopwatch.Start(ref originShiftTime);
+
+                    // Update grid indices.
                     originIndex = newOriginIndex;
                     lowerGridOffset = newLowerGridOffset;
 
-                    //
-                    // Remove out of bounds entries (loop through existing entries).
-                    //
+                    originHasShifted = true;
 
+                    // Remove out of bounds entries (loop through existing entries).
                     int3[] bricksCopy = new int3[bricks.Keys.Count];
                     bricks.Keys.CopyTo(bricksCopy, 0);
 
@@ -935,10 +958,7 @@ namespace TerrainSystem
                         }
                     }
                     
-                    //
                     // Add in bounds entries (loop through intended entry indices).
-                    //
-
                     for (int x = 0; x < brickmapSize; x++)
                     {
                         for (int y = 0; y < brickmapSize; y++)
@@ -959,27 +979,32 @@ namespace TerrainSystem
                         }
                     }
 
-                    //
                     // Update neighbor LOD data.
-                    //
-
                     if (levelIndex > 0)
                     {
                         foreach (int3 brickIndex in bricks.Keys)
                             bricks[brickIndex].UpdateNeighborLOD(PackNeighborLOD(brickIndex));
                     }
+
+                    Stopwatch.End(ref originShiftTime);
                 }
+            }
+
+            public void UpdateDensity(Camera observerCamera, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
+            {
+                Stopwatch.Start(ref updateTime);
 
                 // Update shapes intersecting this brickmap level.
-                if (originHasMoved || scene.csgShapes.IsDirty)
-                    UpdateIntersectingShapeIndices(scene.csgShapes, intersectingCSGShapes);
+                if (originHasShifted || scene.csgShapes.IsDirty)
+                {
+                    FilterIntersectingShapes(scene.csgShapes, intersectingCSGShapes);
+                    originHasShifted = false;
+                }
 
                 // Update all bricks.
+                // TODO: love to try not to update every brick every frame. More event-based, selective updates would be better.
                 foreach (Brick brick in bricks.Values)
                     brick.Update(observerCamera, scene, intersectingCSGShapes, densityEvaluator, mesher);
-
-                if (isMajorUpdate)
-                    Stopwatch.End(ref majorUpdateTime);
 
                 Stopwatch.End(ref updateTime);
             }
@@ -1026,7 +1051,7 @@ namespace TerrainSystem
                 }
             }
 
-            void UpdateIntersectingShapeIndices(ShapeQueue shapeQueue, List<int> indices)
+            void FilterIntersectingShapes(ShapeQueue shapeQueue, List<int> indices)
             {
                 indices.Clear();
 
