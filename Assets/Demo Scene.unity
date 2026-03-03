@@ -397,7 +397,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ProceduralTerrain
   Material: {fileID: 2100000, guid: 3bacf5dc387e5bc418e75b63a7ac8e9b, type: 2}
-  UseStaticOrigin: 1
+  UseStaticOrigin: 0
   m_DrawBrickmapBorders: 0
   m_DrawBricks: 0
   m_DrawShapeVolumes: 0

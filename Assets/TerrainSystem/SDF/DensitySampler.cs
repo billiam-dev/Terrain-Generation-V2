@@ -1,9 +1,10 @@
-using TerrainSystem.Scene;
 using System;
 using System.Runtime.CompilerServices;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
+
+using TerrainSystem.Scene;
 
 namespace TerrainSystem.SDF
 {
@@ -31,28 +32,27 @@ namespace TerrainSystem.SDF
 
         readonly struct NoiseData
         {
-            public readonly float3 offset;   // 12 bytes
-            public readonly float amplitude; // 4 byes
-            public readonly float frequency; // 4 bytes
+            public readonly float3 seededOffset; // 12 bytes
+            public readonly float amplitude;     // 4 byes
+            public readonly float frequency;     // 4 bytes
 
             public NoiseData(float amplitude, float frequency, float3 seededOffset)
             {
                 this.amplitude = amplitude;
                 this.frequency = frequency;
-                this.offset = seededOffset;
+                this.seededOffset = seededOffset;
             }
         }
 
         float m_IntialDensity;
 
         NativeArray<DistanceFunctionData> m_TerrainShapes;
-        NativeArray<int> m_TerrainShapeIndices;
 
         NoiseData m_SurfaceNoise;
         NoiseData m_GlobalNoise;
-
+        
         NativeArray<DistanceFunctionData> m_CSGShapes;
-        // TODO: CSG shape indices.
+        NativeArray<int> m_CSGShapeFilter;
 
         Allocator m_Allocator;
         bool m_IsAllocated;
@@ -163,9 +163,9 @@ namespace TerrainSystem.SDF
             }
 
             m_TerrainShapes.Dispose();
-            m_TerrainShapeIndices.Dispose();
 
             m_CSGShapes.Dispose();
+            m_CSGShapeFilter.Dispose();
 
             m_IsAllocated = false;
         }
@@ -173,7 +173,7 @@ namespace TerrainSystem.SDF
         /// <summary>
         /// Assign a list of indices into the terrain shape queue to be evaluated by this sampler.
         /// </summary>
-        public void AssignTerrainShapeIndices(int[] indices)
+        public void FilterCSGShapes(int[] indices)
         {
             if (!m_IsAllocated)
             {
@@ -181,11 +181,11 @@ namespace TerrainSystem.SDF
                 return;
             }
 
-            if (m_TerrainShapeIndices.IsCreated)
-                m_TerrainShapeIndices.Dispose();
+            if (m_CSGShapeFilter.IsCreated)
+                m_CSGShapeFilter.Dispose();
 
-            m_TerrainShapeIndices = new(indices.Length, m_Allocator);
-            m_TerrainShapeIndices.CopyFrom(indices);
+            m_CSGShapeFilter = new(indices.Length, m_Allocator);
+            m_CSGShapeFilter.CopyFrom(indices);
         }
 
         /* 
@@ -210,9 +210,9 @@ namespace TerrainSystem.SDF
             float density = m_IntialDensity;
 
             density = SampleSurface(m_SurfaceNoise, worldPosition, density);
-            density = SampleShapeQueueSmooth(m_TerrainShapes, m_TerrainShapeIndices, worldPosition, density);
+            density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);
             density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
-            density = SampleShapeQueueHard(m_CSGShapes, worldPosition, density);
+            density = SampleShapeQueueHardWithFilter(m_CSGShapes, m_CSGShapeFilter, worldPosition, density);
 
             return density;
         }
@@ -242,26 +242,24 @@ namespace TerrainSystem.SDF
         static float SampleSurface(NoiseData surfaceData, float3 worldPosition, float density)
         {
 #if UNITY_EDITOR
-            // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the game.
+            // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the build.
             if (surfaceData.amplitude == 0)
                 return density;
 #endif
 
-            // TODO: seed
-            return density + Surface(worldPosition - surfaceData.offset, surfaceData.frequency, surfaceData.amplitude);
+            return density + Surface(worldPosition - surfaceData.seededOffset, surfaceData.frequency, surfaceData.amplitude);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static float Sample3DNoise(NoiseData noiseData, float3 worldPosition, float density)
         {
 #if UNITY_EDITOR
-            // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the game.
+            // TODO: this branch is a bit crap, the UNITY_EDITOR is bandaid fix for the sake of the build.
             if (noiseData.amplitude == 0)
                 return density;
 #endif
 
-            // TODO: seed
-            return density + Noise(worldPosition + noiseData.offset, noiseData.frequency, noiseData.amplitude);
+            return density + Noise(worldPosition + noiseData.seededOffset, noiseData.frequency, noiseData.amplitude);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -299,17 +297,17 @@ namespace TerrainSystem.SDF
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float SampleShapeQueueSmooth(NativeArray<DistanceFunctionData> distanceFunctions, NativeArray<int> indices, float3 worldPosition, float density)
+        static float SampleShapeQueueHard(NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
         {
             DistanceFunctionData sdf;
             float3 translatedPosition;
             float distance;
 
             // Apply pre-noise shapes.
-            int numShapes = indices.Length;
+            int numShapes = distanceFunctions.Length;
             for (int i = 0; i < numShapes; i++)
             {
-                sdf = distanceFunctions[indices[i]];
+                sdf = distanceFunctions[i];
 
                 // Get a translated position using the shape's inverse matrix (worldToLocal).
                 translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;
@@ -326,24 +324,24 @@ namespace TerrainSystem.SDF
                 };
 
                 // Mix the old and new distance values using smooth min.
-                density = SmoothMin(density * sdf.minSign, distance, ProceduralTerrain.Smoothness) * sdf.minSign;
+                density = math.min(density * sdf.minSign, distance) * sdf.minSign;
             }
 
             return density;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static float SampleShapeQueueHard(NativeArray<DistanceFunctionData> distanceFunctions, float3 worldPosition, float density)
+        static float SampleShapeQueueHardWithFilter(NativeArray<DistanceFunctionData> distanceFunctions, NativeArray<int> indices, float3 worldPosition, float density)
         {
             DistanceFunctionData sdf;
             float3 translatedPosition;
             float distance;
 
             // Apply pre-noise shapes.
-            int numShapes = distanceFunctions.Length;
+            int numShapes = indices.Length;
             for (int i = 0; i < numShapes; i++)
             {
-                sdf = distanceFunctions[i];
+                sdf = distanceFunctions[indices[i]];
 
                 // Get a translated position using the shape's inverse matrix (worldToLocal).
                 translatedPosition = math.mul(sdf.inverseMatrix.rs, worldPosition) + sdf.inverseMatrix.t;

@@ -6,6 +6,7 @@ namespace TerrainSystem.Addons.Test
 {
     public class TerrainSampler : MonoBehaviour
     {
+#if UNITY_EDITOR
         [SerializeField]
         ProceduralTerrain m_Terrain;
 
@@ -28,5 +29,6 @@ namespace TerrainSystem.Addons.Test
             Handles.Label(origin, density.ToString());
             Gizmos.DrawWireSphere(origin, density);
         }
+#endif
     }
 }

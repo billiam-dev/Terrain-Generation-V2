@@ -23,6 +23,8 @@ namespace TerrainSystem
         // TODO: track down yet another memory leak.
         // Unity keeps crashing with 93% pagefile memory usage or somat >:(
 
+        // TODO: track shapes with BVH for fast filtering.
+
         /// <summary>
         /// Apply a material to the terrain.
         /// </summary>
@@ -189,7 +191,7 @@ namespace TerrainSystem
 #if UNITY_EDITOR
             Camera camera = Application.isPlaying ? ObserverCamera : Camera.current;
 #else
-            Camera camera = s_ObserverCamera;
+            Camera camera = ObserverCamera;
 #endif
 
             if (!camera)
@@ -630,7 +632,7 @@ namespace TerrainSystem
                         renderer.Dispose();
                 }
 
-                public void Update(Camera observerCamera, SDFScene scene, List<int> brickmapTerrainShapeIndices, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
+                public void Update(Camera observerCamera, SDFScene scene, List<int> filteredCSGShapeIndices, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
                 {
                     // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
@@ -641,8 +643,8 @@ namespace TerrainSystem
                     {                        
                         densitySampler.Allocate(scene, Allocator.TempJob); // TODO: allocate in ProceduralTerrain and pass around.
 
-                        int[] intersectingTerrainShapeIndices = FindIntersectingShapeIndices(scene.terrainShapes, brickmapTerrainShapeIndices);
-                        densitySampler.AssignTerrainShapeIndices(intersectingTerrainShapeIndices);
+                        int[] intersectingTerrainShapeIndices = FindIntersectingShapeIndices(scene.csgShapes, filteredCSGShapeIndices);
+                        densitySampler.FilterCSGShapes(intersectingTerrainShapeIndices);
                     }
 
                     //
@@ -833,8 +835,8 @@ namespace TerrainSystem
             readonly int quarterBrickmapSize;  // One fourth the number of bricks per axis contained in this brick map.
             readonly int levelScale;           // The scale multiplier relative to the smallest brickmap level, derrived from the level index with the equation (2 ^ level).
 
-            readonly Dictionary<int3, Brick> bricks;        // Map of loaded bricks, centred around the given observer. Should be called the Bricktionary.
-            readonly List<int> intersectingTerrainShapes;   // List of indices into the scenes terrain shape queue, only containing shapes whose volumes intersects this brickmap level.
+            readonly Dictionary<int3, Brick> bricks;    // Map of loaded bricks, centred around the given observer. Should be called the Bricktionary.
+            readonly List<int> intersectingCSGShapes;   // List of indices into the CSG shape queue, filtered by intersection with this brickmap level.
 
             int3 originIndex;                  // The global brick index in which this map currently originates.
             int3 lowerGridOffset;              // The local offset of the brickmap contained within this one.
@@ -880,7 +882,7 @@ namespace TerrainSystem
                 levelScale = 1 << levelIndex;
 
                 bricks = new(brickmapSize * brickmapSize * brickmapSize);
-                intersectingTerrainShapes = new();
+                intersectingCSGShapes = new();
 
                 originIndex = int.MaxValue;
                 lowerGridOffset = 0;
@@ -892,7 +894,7 @@ namespace TerrainSystem
                     brick.Dispose();
 
                 bricks.Clear();
-                intersectingTerrainShapes.Clear();
+                intersectingCSGShapes.Clear();
             }
 
             public void Update(Camera observerCamera, float3 observerPosition, int3 lowerGridOriginIndex, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
@@ -969,12 +971,12 @@ namespace TerrainSystem
                 }
 
                 // Update shapes intersecting this brickmap level.
-                if (originHasMoved || scene.terrainShapes.IsDirty)
-                    UpdateIntersectingShapeIndices(scene.terrainShapes);
+                if (originHasMoved || scene.csgShapes.IsDirty)
+                    UpdateIntersectingShapeIndices(scene.csgShapes, intersectingCSGShapes);
 
                 // Update all bricks.
                 foreach (Brick brick in bricks.Values)
-                    brick.Update(observerCamera, scene, intersectingTerrainShapes, densityEvaluator, mesher);
+                    brick.Update(observerCamera, scene, intersectingCSGShapes, densityEvaluator, mesher);
 
                 if (isMajorUpdate)
                     Stopwatch.End(ref majorUpdateTime);
@@ -1024,9 +1026,9 @@ namespace TerrainSystem
                 }
             }
 
-            void UpdateIntersectingShapeIndices(ShapeQueue shapeQueue)
+            void UpdateIntersectingShapeIndices(ShapeQueue shapeQueue, List<int> indices)
             {
-                intersectingTerrainShapes.Clear();
+                indices.Clear();
 
                 Shape[] shapes = shapeQueue.Shapes;
                 for (int i = 0; i < shapes.Length; i++)
@@ -1050,7 +1052,7 @@ namespace TerrainSystem
                         continue;
 
                     // Else, add the shape index to the list.
-                    intersectingTerrainShapes.Add(i);
+                    indices.Add(i);
                 }
             }
 

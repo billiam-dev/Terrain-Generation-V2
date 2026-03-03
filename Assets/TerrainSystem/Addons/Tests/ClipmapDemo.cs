@@ -1,4 +1,3 @@
-#if UNITY_EDITOR
 using Unity.Mathematics;
 using UnityEditor;
 using UnityEngine;
@@ -10,6 +9,7 @@ namespace TerrainSystem.Addons.Tests
     /// </summary>
     public class ClipmapDemo : MonoBehaviour
     {
+#if UNITY_EDITOR
         [SerializeField, Range(1, k_MaxClipmapLevels)]
         int m_NumClipmapLevels = 1;
 
@@ -134,6 +134,6 @@ namespace TerrainSystem.Addons.Tests
                 }
             }
         }
+#endif
     }
 }
-#endif

@@ -1,12 +1,16 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
-using UnityEditor;
 using UnityEngine;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace TerrainSystem.Addons.Test
 {
     public class TerrainRaycaster : MonoBehaviour
     {
+#if UNITY_EDITOR
         [SerializeField]
         ProceduralTerrain m_Terrain;
 
@@ -47,7 +51,6 @@ namespace TerrainSystem.Addons.Test
                 }
                 else
                 {
-
                     Gizmos.color = SuccessColor;
                     Gizmos.DrawLine(origin, origin + (dir * 1000.0f));
                 }
@@ -73,5 +76,6 @@ namespace TerrainSystem.Addons.Test
                 }
             }
         }
+#endif
     }
 }

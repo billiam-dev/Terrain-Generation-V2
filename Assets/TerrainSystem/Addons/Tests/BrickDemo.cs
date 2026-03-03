@@ -1,4 +1,3 @@
-#if UNITY_EDITOR
 using System;
 using Unity.Mathematics;
 using UnityEngine;
@@ -7,6 +6,7 @@ namespace TerrainSystem.Addons.Tests
 {
     public class BrickDemo : MonoBehaviour
     {
+#if UNITY_EDITOR
         [SerializeField, Range(4, 16)]
         int m_BrickSize = 16;
 
@@ -111,6 +111,6 @@ namespace TerrainSystem.Addons.Tests
                 _ => new(0, 0, 0)
             };
         }
+#endif
     }
 }
-#endif
