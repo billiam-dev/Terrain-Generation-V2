@@ -11,11 +11,11 @@ namespace TerrainSystem.Scene
         public readonly NoiseLayer globalNoise;
 
         // An option to use a pre-computed density map rather than the terrain shapes
-        // and noise layers before applying Constructive Solid Geometry shapes.
+        // and noise layers before applying terraforming shapes.
         public bool useDensityCache;
         public readonly DensityCache densityCache;
 
-        public readonly ShapeQueue csgShapes;
+        public readonly ShapeQueue terraformShapes;
 
         public SDFScene()
         {
@@ -23,7 +23,7 @@ namespace TerrainSystem.Scene
             terrainShapes = new();
             surfaceNoise = new();
             globalNoise = new();
-            csgShapes = new();
+            terraformShapes = new();
         }
 
         public void Clear()
@@ -32,7 +32,7 @@ namespace TerrainSystem.Scene
             terrainShapes.Clear();
             surfaceNoise.Clear();
             globalNoise.Clear();
-            csgShapes.Clear();
+            terraformShapes.Clear();
         }
     }
 

@@ -51,8 +51,8 @@ namespace TerrainSystem.SDF
         NoiseData m_SurfaceNoise;
         NoiseData m_GlobalNoise;
         
-        NativeArray<DistanceFunctionData> m_CSGShapes;
-        NativeArray<int> m_CSGShapeFilter;
+        NativeArray<DistanceFunctionData> m_TerraformShapes;
+        NativeArray<int> m_TerraformShapeFilter;
 
         Allocator m_Allocator;
         bool m_IsAllocated;
@@ -130,21 +130,21 @@ namespace TerrainSystem.SDF
                 offset);
 
             //
-            // SSG Shapes
+            // Terraform Shapes
             //
 
-            Shape[] csgShapes = scene.csgShapes.Shapes;
+            Shape[] terraformShapes = scene.terraformShapes.Shapes;
 
-            int numCSGShapes = csgShapes.Length;
-            m_CSGShapes = new(numCSGShapes, m_Allocator);
+            int numTerraformShapes = terraformShapes.Length;
+            m_TerraformShapes = new(numTerraformShapes, m_Allocator);
 
-            for (int i = 0; i < numCSGShapes; i++)
+            for (int i = 0; i < numTerraformShapes; i++)
             {
-                m_CSGShapes[i] = new DistanceFunctionData(
-                    csgShapes[i].InverseMatrix,
-                    csgShapes[i].Dimentions,
-                    (uint)csgShapes[i].DistanceFunction,
-                    csgShapes[i].BlendMode == BlendMode.Subtractive
+                m_TerraformShapes[i] = new DistanceFunctionData(
+                    terraformShapes[i].InverseMatrix,
+                    terraformShapes[i].Dimentions,
+                    (uint)terraformShapes[i].DistanceFunction,
+                    terraformShapes[i].BlendMode == BlendMode.Subtractive
                 );
             }
 
@@ -164,8 +164,8 @@ namespace TerrainSystem.SDF
 
             m_TerrainShapes.Dispose();
 
-            m_CSGShapes.Dispose();
-            m_CSGShapeFilter.Dispose();
+            m_TerraformShapes.Dispose();
+            m_TerraformShapeFilter.Dispose();
 
             m_IsAllocated = false;
         }
@@ -173,7 +173,7 @@ namespace TerrainSystem.SDF
         /// <summary>
         /// Assign a list of indices into the terrain shape queue to be evaluated by this sampler.
         /// </summary>
-        public void FilterCSGShapes(int[] indices)
+        public void FilterTerraformShapes(int[] indices)
         {
             if (!m_IsAllocated)
             {
@@ -181,11 +181,11 @@ namespace TerrainSystem.SDF
                 return;
             }
 
-            if (m_CSGShapeFilter.IsCreated)
-                m_CSGShapeFilter.Dispose();
+            if (m_TerraformShapeFilter.IsCreated)
+                m_TerraformShapeFilter.Dispose();
 
-            m_CSGShapeFilter = new(indices.Length, m_Allocator);
-            m_CSGShapeFilter.CopyFrom(indices);
+            m_TerraformShapeFilter = new(indices.Length, m_Allocator);
+            m_TerraformShapeFilter.CopyFrom(indices);
         }
 
         /* 
@@ -200,7 +200,7 @@ namespace TerrainSystem.SDF
             density = SampleSurface(m_SurfaceNoise, worldPosition, density);
             density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);
             density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
-            density = SampleShapeQueueHard(m_CSGShapes, worldPosition, density);
+            density = SampleShapeQueueHard(m_TerraformShapes, worldPosition, density);
 
             return density;
         }
@@ -212,23 +212,7 @@ namespace TerrainSystem.SDF
             density = SampleSurface(m_SurfaceNoise, worldPosition, density);
             density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);
             density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
-            density = SampleShapeQueueHardWithFilter(m_CSGShapes, m_CSGShapeFilter, worldPosition, density);
-
-            return density;
-        }
-
-        public readonly float SampleIndicesWithCache(float3 worldPosition)
-        {
-            return m_IntialDensity;
-        }
-
-        public readonly float SampleNoCSG(float3 worldPosition)
-        {
-            float density = m_IntialDensity;
-
-            density = SampleSurface(m_SurfaceNoise, worldPosition, density);
-            density = SampleShapeQueueSmooth(m_TerrainShapes, worldPosition, density);
-            density = Sample3DNoise(m_GlobalNoise, worldPosition, density);
+            density = SampleShapeQueueHardWithFilter(m_TerraformShapes, m_TerraformShapeFilter, worldPosition, density);
 
             return density;
         }

@@ -136,7 +136,7 @@ namespace TerrainSystem.Scene
             int3 globalCellIndex = (regionIndex * regionSize) + localCellIndex;
 
             // Sample the SDF.
-            float newDensity = densitySampler.SampleNoCSG((float3)globalCellIndex);
+            float newDensity = densitySampler.Sample((float3)globalCellIndex);
 
             // Store the new density.
             density[index] = newDensity;

@@ -271,7 +271,6 @@ namespace TerrainSystem.Scene
             }
 
             // Pad the volume to account for the smoothing factor around shapes.
-            // TODO: Add bool IsSmooth to this shape. CSG shapes do not run through the SmoothMin function so therefore the bounds does not need to be extended.
             boundsVolume += ProceduralTerrain.Smoothness * k_SmoothnessVolumeExtentConstant;
 
             // Translate the volume by my matrix.

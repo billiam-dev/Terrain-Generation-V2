@@ -14,6 +14,11 @@ namespace TerrainSystem.Addons.Terraformer
         float lastInputTime;
         float brushRadius;
 
+        void Start()
+        {
+            brushRadius = 1.0f;
+        }
+
         void Update()
         {
             if (!m_Terrain || Time.realtimeSinceStartup < lastInputTime + m_InputDeadTime)
@@ -39,7 +44,7 @@ namespace TerrainSystem.Addons.Terraformer
                 RaymarchResult result = m_Terrain.RaytraceSurface(transform.position, transform.forward);
                 if (result.hitSurface)
                 {
-                    m_Terrain.Terraform(new Scene.Shape(result.position, quaternion.identity, 1.0f, Scene.DistanceFunction.Sphere, Scene.BlendMode.Additive, 2.0f));
+                    m_Terrain.Terraform(new Scene.Shape(result.position, quaternion.identity, 1.0f, Scene.DistanceFunction.Sphere, Scene.BlendMode.Additive, brushRadius));
                     lastInputTime = Time.realtimeSinceStartup;
                 }
             }
@@ -51,7 +56,7 @@ namespace TerrainSystem.Addons.Terraformer
                 RaymarchResult result = m_Terrain.RaytraceSurface(transform.position, transform.forward);
                 if (result.hitSurface)
                 {
-                    m_Terrain.Terraform(new Scene.Shape(result.position, quaternion.identity, 1.0f, Scene.DistanceFunction.Sphere, Scene.BlendMode.Subtractive, 2.0f));
+                    m_Terrain.Terraform(new Scene.Shape(result.position, quaternion.identity, 1.0f, Scene.DistanceFunction.Sphere, Scene.BlendMode.Subtractive, brushRadius));
                     lastInputTime = Time.realtimeSinceStartup;
                 }
             }

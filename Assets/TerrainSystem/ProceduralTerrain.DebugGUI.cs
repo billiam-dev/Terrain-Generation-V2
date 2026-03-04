@@ -60,7 +60,7 @@ namespace TerrainSystem
             {
                 GUI.Label(rect, $"Level idx: {levelIndex}");
                 rect.y += k_SingleLineHeight;
-                GUI.Label(rect, $"   Num shapes: {intersectingCSGShapes.Count}");
+                GUI.Label(rect, $"   Num shapes: {intersectingShapes.Count}");
                 rect.y += k_SingleLineHeight;
                 GUI.Label(rect, $"   Loaded bricks: {bricks.Count}");
                 rect.y += k_SingleLineHeight;

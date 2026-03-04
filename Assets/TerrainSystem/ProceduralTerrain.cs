@@ -20,10 +20,11 @@ namespace TerrainSystem
     [DisallowMultipleComponent]
     public partial class ProceduralTerrain : MonoBehaviour
     {
-        // TODO: track down yet another memory leak.
-        // Unity keeps crashing with 93% pagefile memory usage or somat >:(
+        // TODO: track down yet another memory leak. Unity keeps crashing with 93% pagefile memory usage or somat >:(
 
-        // TODO: track shapes with BVH for fast filtering.
+        // TODO: test if BatchDensityEvaluator (IJobFor -> parallel IJOB) is faster.
+
+        // TODO: track terrain shapes with BVH for fast filtering.
 
         /// <summary>
         /// Apply a material to the terrain.
@@ -90,7 +91,6 @@ namespace TerrainSystem
         const int k_NumBrickmapLevels = 5;  // The number of brickmap levels, each doubling the grid size of the previous level.
 
         // The amount of blending applied between terrain-forming shapes.
-        // Does not apply to the CSG shapes users apply by mining or building upon the terrain.
         public const float Smoothness = 6.0f;
 
         void OnEnable()
@@ -218,15 +218,15 @@ namespace TerrainSystem
                 m_Scene.terrainShapes.ClearModifiedVolumes();
             }
 
-            if (m_Scene.csgShapes.IsDirty)
+            if (m_Scene.terraformShapes.IsDirty)
             {
-                foreach (Volume volume in m_Scene.csgShapes.ModifiedVolumes)
+                foreach (Volume volume in m_Scene.terraformShapes.ModifiedVolumes)
                 {
                     foreach (Brickmap brickmap in m_BrickmapLevels)
                         brickmap.MarkVolumeAsModified(volume);
                 }
 
-                m_Scene.csgShapes.ClearModifiedVolumes();
+                m_Scene.terraformShapes.ClearModifiedVolumes();
             }
 
             // Update brickmaps origin.
@@ -248,7 +248,7 @@ namespace TerrainSystem
 
             // Update brickmaps density.
             for (int i = 0; i < k_NumBrickmapLevels; i++)
-                m_BrickmapLevels[i].UpdateDensity(camera, m_Scene, m_DensityEvaluator, m_Mesher);
+                m_BrickmapLevels[i].UpdateBricks(camera, m_Scene, m_DensityEvaluator, m_Mesher);
 
             // Execute meshing tasks queued this frame.
             if (m_Mesher.NumPendingTasks > 0)
@@ -259,7 +259,7 @@ namespace TerrainSystem
             m_Scene.surfaceNoise.IsDirty = false;
             m_Scene.globalNoise.IsDirty = false;
             m_Scene.terrainShapes.IsDirty = false;
-            m_Scene.csgShapes.IsDirty = false;
+            m_Scene.terraformShapes.IsDirty = false;
 
             Stopwatch.End(ref m_UpdateTime);
         }
@@ -321,9 +321,7 @@ namespace TerrainSystem
                 return;
             }
 
-            // TODO: The SDG Queue probably dosn't need the whole terrain shape treatment for gameplay purposes.
-            // We could avoid the matrix stuff, smoothness-based volume increase and, should we limit users to only spheres, the switch statement which would speed up the JOB massively.
-            m_Scene.csgShapes.AddShape(shape);
+            m_Scene.terraformShapes.AddShape(shape);
         }
 
         /// <summary>
@@ -661,7 +659,7 @@ namespace TerrainSystem
                         renderer.Dispose();
                 }
 
-                public void Update(Camera observerCamera, SDFScene scene, List<int> filteredCSGShapeIndices, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
+                public void Update(Camera observerCamera, SDFScene scene, List<int> filteredShapeIndices, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
                 {
                     // We can skip meshing far away bricks that are not in the view frustum under the assumption that their shadows are not needed.
                     if (levelScale > 1 && !InViewFrustum(observerCamera))
@@ -672,8 +670,8 @@ namespace TerrainSystem
                     {                        
                         densitySampler.Allocate(scene, Allocator.TempJob); // TODO: allocate in ProceduralTerrain and pass around.
 
-                        int[] intersectingTerrainShapeIndices = FindIntersectingShapeIndices(scene.csgShapes, filteredCSGShapeIndices);
-                        densitySampler.FilterCSGShapes(intersectingTerrainShapeIndices);
+                        int[] intersectingTerrainShapeIndices = FilterIntersectingShapes(scene.terraformShapes, filteredShapeIndices);
+                        densitySampler.FilterTerraformShapes(intersectingTerrainShapeIndices);
                     }
 
                     //
@@ -799,7 +797,7 @@ namespace TerrainSystem
                         transitionUpdateQueued = true;
                 }
 
-                int[] FindIntersectingShapeIndices(ShapeQueue shapeQueue, List<int> checkIndices)
+                int[] FilterIntersectingShapes(ShapeQueue shapeQueue, List<int> checkIndices)
                 {
                     Shape[] shapes = shapeQueue.Shapes;
                     List<int> returnIndices = new();
@@ -863,7 +861,7 @@ namespace TerrainSystem
             readonly int levelScale;           // The scale multiplier relative to the smallest brickmap level, derrived from the level index with the equation (2 ^ level).
 
             readonly Dictionary<int3, Brick> bricks;    // Map of loaded bricks, centred around the given observer. Should be called the Bricktionary.
-            readonly List<int> intersectingCSGShapes;   // List of indices into the CSG shape queue, filtered by intersection with this brickmap level.
+            readonly List<int> intersectingShapes;      // List of indices into the terraform shape queue, filtered by intersection with this brickmap level.
 
             int3 originIndex;                  // The global brick index in which this map currently originates.
             int3 lowerGridOffset;              // The local offset of the brickmap contained within this one.
@@ -910,7 +908,7 @@ namespace TerrainSystem
                 levelScale = 1 << levelIndex;
 
                 bricks = new(brickmapSize * brickmapSize * brickmapSize);
-                intersectingCSGShapes = new();
+                intersectingShapes = new();
 
                 originIndex = int.MaxValue;
                 lowerGridOffset = 0;
@@ -922,7 +920,7 @@ namespace TerrainSystem
                     brick.Dispose();
 
                 bricks.Clear();
-                intersectingCSGShapes.Clear();
+                intersectingShapes.Clear();
             }
 
             public void UpdateOrigin(float3 observerPosition, int3 lowerGridOriginIndex)
@@ -990,21 +988,21 @@ namespace TerrainSystem
                 }
             }
 
-            public void UpdateDensity(Camera observerCamera, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
+            public void UpdateBricks(Camera observerCamera, SDFScene scene, DensityEvaluator densityEvaluator, BatchChunkMesher mesher)
             {
                 Stopwatch.Start(ref updateTime);
 
                 // Update shapes intersecting this brickmap level.
-                if (originHasShifted || scene.csgShapes.IsDirty)
+                if (originHasShifted || scene.terraformShapes.IsDirty)
                 {
-                    FilterIntersectingShapes(scene.csgShapes, intersectingCSGShapes);
+                    FilterIntersectingShapes(scene.terraformShapes, intersectingShapes);
                     originHasShifted = false;
                 }
 
                 // Update all bricks.
                 // TODO: love to try not to update every brick every frame. More event-based, selective updates would be better.
                 foreach (Brick brick in bricks.Values)
-                    brick.Update(observerCamera, scene, intersectingCSGShapes, densityEvaluator, mesher);
+                    brick.Update(observerCamera, scene, intersectingShapes, densityEvaluator, mesher);
 
                 Stopwatch.End(ref updateTime);
             }
@@ -1075,6 +1073,8 @@ namespace TerrainSystem
                     // If map volume overlaps with the shape volume, skip this shape.
                     if (math.any(aMax < bMin) || math.any(aMin > bMax))
                         continue;
+
+                    // TODO: also filter shapes if overlapping previous level
 
                     // Else, add the shape index to the list.
                     indices.Add(i);

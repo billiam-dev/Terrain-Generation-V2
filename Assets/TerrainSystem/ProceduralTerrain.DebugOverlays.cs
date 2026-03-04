@@ -134,7 +134,7 @@ namespace TerrainSystem
             {
                 HashSet<int3> bricksInShapeVolumes = new();
 
-                foreach (int shapeIndex in intersectingCSGShapes)
+                foreach (int shapeIndex in intersectingShapes)
                 {
                     IntVolume brickVolume = GetBrickVolumeFromAABB(brickSize, levelScale * worldScale, scene.terrainShapes.Shapes[shapeIndex].Volume);
                     int3 initialIndex = brickVolume.coordinate;
