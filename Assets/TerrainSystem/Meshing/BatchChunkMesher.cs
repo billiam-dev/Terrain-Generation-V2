@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Jobs.LowLevel.Unsafe;
+using Unity.Mathematics;
 
 namespace TerrainSystem.Meshing
 {
@@ -10,8 +12,7 @@ namespace TerrainSystem.Meshing
     /// </summary>
     class BatchChunkMesher : IDisposable
     {
-        const int k_PoolSize = 16;      // The size of the ChunkMesher pool.
-
+        int m_PoolSize;                 // The size of the ChunkMesher pool.
         ChunkMesher[] m_MesherPool;     // The pool of individually allocated ChunkMeshers capable of running meshing JOBs independently.
         List<MeshingTask> m_TaskQueue;  // The list of meshing tasks that have been queued by the user.
 
@@ -25,12 +26,15 @@ namespace TerrainSystem.Meshing
         public double TotalExecutionTime => m_ExecutionTime;
         public double AvgExecutionTime => m_AvgExecutionTime.Avarage();
         public int NumTasksCompleted => m_NumTasksCompleted;
+        public int PoolSize => m_PoolSize;
 
         public void Allocate()
         {
-            m_MesherPool = new ChunkMesher[k_PoolSize];
+            m_PoolSize = math.max(JobsUtility.JobWorkerMaximumCount - 1, 1); // -1 to leave a thread for Unity... https://discussions.unity.com/t/job-stalls-the-main-thread/1558803
 
-            for (int i = 0; i < k_PoolSize; i++)
+            m_MesherPool = new ChunkMesher[m_PoolSize];
+
+            for (int i = 0; i < m_PoolSize; i++)
             {
                 m_MesherPool[i] = new();
                 m_MesherPool[i].Allocate();
@@ -129,7 +133,7 @@ namespace TerrainSystem.Meshing
 
                 // Once every mesher has been given a task, break from the loop.
                 mesherIndex++;
-                if (mesherIndex == k_PoolSize)
+                if (mesherIndex == m_PoolSize)
                     break;
             }
 

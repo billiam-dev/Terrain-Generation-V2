@@ -21,6 +21,10 @@ namespace TerrainSystem
             //GUI.Label(rect, $"Shapes in scene: {m_Scene.NumShapes}");
             //rect.y += k_SingleLineHeight * 2.0f;
 
+            // Mesher info
+            GUI.Label(rect, $"Mesher Pool Size: {m_Mesher.PoolSize}");
+            rect.y += k_SingleLineHeight;
+
             // Brick constants
             GUI.Label(rect, $"Brick Size: {k_BrickSize} (+3) (Cells per brick: {cellsPerBrick})");
             rect.y += k_SingleLineHeight;

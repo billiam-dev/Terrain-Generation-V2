@@ -21,9 +21,6 @@ namespace TerrainSystem
     public partial class ProceduralTerrain : MonoBehaviour
     {
         // TODO: track down yet another memory leak. Unity keeps crashing with 93% pagefile memory usage or somat >:(
-
-        // TODO: test if BatchDensityEvaluator (IJobFor -> parallel IJOB) is faster.
-
         // TODO: track terrain shapes with BVH for fast filtering.
 
         /// <summary>
