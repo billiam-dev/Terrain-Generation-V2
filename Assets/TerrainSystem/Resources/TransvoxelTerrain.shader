@@ -184,7 +184,7 @@ Shader "Terrain"
 
             #pragma target 2.0
 
-            #pragma vertex ShadowPassVertexe
+            #pragma vertex ShadowPassVertex
             #pragma fragment ShadowPassFragment
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -215,7 +215,7 @@ Shader "Terrain"
                 return ApplyShadowClamping(positionCS);
             }
 
-            Varyings ShadowPassVertexe(Attributes IN)
+            Varyings ShadowPassVertex(Attributes IN)
             {
                 // Select secondary positions if the vertex edge mask is included in the LOD data.
                 if ((IN.edgeMask & _PackedNeighborLOD) == IN.edgeMask)

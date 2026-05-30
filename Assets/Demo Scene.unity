@@ -396,13 +396,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 37c5e78ddc5b9cd4d87e75d5ea67129f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelGeneration.Terrain.ProceduralTerrain
-  Material: {fileID: 2100000, guid: 3bacf5dc387e5bc418e75b63a7ac8e9b, type: 2}
-  UseStaticOrigin: 0
   m_DrawBrickmapBorders: 0
   m_DrawBricks: 0
   m_DrawShapeVolumes: 0
   m_EnableDensityTester: 0
   m_DensityTesterPosition: {x: -4.599703, y: 18.5998, z: -30.332253}
+  Material: {fileID: 2100000, guid: 3bacf5dc387e5bc418e75b63a7ac8e9b, type: 2}
+  UseStaticOrigin: 0
 --- !u!114 &337805765
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -480,14 +480,14 @@ Light:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 346887001}
   m_Enabled: 1
-  serializedVersion: 11
+  serializedVersion: 13
   m_Type: 2
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_Intensity: 500
   m_Range: 137
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
-  m_CookieSize: 10
+  m_CookieSize2D: {x: 10, y: 10}
   m_Shadows:
     m_Type: 2
     m_Resolution: -1
@@ -532,7 +532,7 @@ Light:
   m_UseBoundingSphereOverride: 0
   m_UseViewFrustumForShadowCasterCull: 1
   m_ForceVisible: 0
-  m_ShadowRadius: 0
+  m_ShapeRadius: 0
   m_ShadowAngle: 0
   m_LightUnit: 1
   m_LuxAtDistance: 1
@@ -578,14 +578,14 @@ Light:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 410087039}
   m_Enabled: 1
-  serializedVersion: 11
+  serializedVersion: 13
   m_Type: 1
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_Intensity: 1
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
-  m_CookieSize: 10
+  m_CookieSize2D: {x: 10, y: 10}
   m_Shadows:
     m_Type: 2
     m_Resolution: -1
@@ -630,7 +630,7 @@ Light:
   m_UseBoundingSphereOverride: 0
   m_UseViewFrustumForShadowCasterCull: 1
   m_ForceVisible: 0
-  m_ShadowRadius: 0
+  m_ShapeRadius: 0
   m_ShadowAngle: 0
   m_LightUnit: 1
   m_LuxAtDistance: 1
