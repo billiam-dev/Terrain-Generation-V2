@@ -1,4 +1,4 @@
-Shader "Terrain Example"
+Shader "TransvoxelTerrainDebug"
 {
     Properties
     {

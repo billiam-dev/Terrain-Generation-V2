@@ -20,7 +20,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Terrain Example
+  m_Name: TerrainDebug
   m_Shader: {fileID: 4800000, guid: 0757d1241e5117740a0e0fd27c61a8d9, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0

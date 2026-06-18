@@ -7,7 +7,19 @@ namespace TerrainSystem
     [CustomEditor(typeof(ProceduralTerrain))]
     partial class ProceduralTerrainEditor : Editor
     {
-        // Properties
+        static class Styles
+        {
+            public static readonly GUIContent Material = EditorGUIUtility.TrTextContent("Material");
+            public static readonly GUIContent UseStaticOrigin = EditorGUIUtility.TrTextContent("Use Static Origin");
+            public static readonly GUIContent DrawBrickmapBorders = EditorGUIUtility.TrTextContent("Brickmap Bounds");
+            public static readonly GUIContent DrawBricks = EditorGUIUtility.TrTextContent("Bricks");
+            public static readonly GUIContent DrawShapeVolumes = EditorGUIUtility.TrTextContent("Shape Volumes");
+            public static readonly GUIContent EnableDensityTester = EditorGUIUtility.TrTextContent("Enable Density Tester");
+            public static readonly GUIContent DensityTesterPosition = EditorGUIUtility.TrTextContent("Position");
+            public static readonly GUIContent HighlightBrickmapLevels = EditorGUIUtility.TrTextContent("Highlight Brickmap Levels");
+            public static readonly GUIContent HighlightTransitionMeshes = EditorGUIUtility.TrTextContent("Highlight Transition Meshes");
+        }
+
         SerializedProperty m_Material;
         SerializedProperty m_UseStaticOrigin;
         SerializedProperty m_DrawBrickmapBorders;
@@ -15,15 +27,6 @@ namespace TerrainSystem
         SerializedProperty m_DrawShapeVolumes;
         SerializedProperty m_EnableDensityTester;
         SerializedProperty m_DensityTesterPosition;
-
-        // GUI Contents
-        GUIContent m_MaterialGUI;
-        GUIContent m_UseStaticOriginGUI;
-        GUIContent m_DrawBrickmapBordersGUI;
-        GUIContent m_DrawBricksGUI;
-        GUIContent m_DrawShapeVolumesGUI;
-        GUIContent m_EnableDensityTesterGUI;
-        GUIContent m_DensityTesterPositionGUI;
 
         ProceduralTerrain m_Target;
 
@@ -39,14 +42,6 @@ namespace TerrainSystem
             m_EnableDensityTester = o.Find(x => x.m_EnableDensityTester);
             m_DensityTesterPosition = o.Find(x => x.m_DensityTesterPosition);
 
-            m_MaterialGUI = new GUIContent("Material");
-            m_UseStaticOriginGUI = new GUIContent("Use Static Origin");
-            m_DrawBrickmapBordersGUI = new GUIContent("Brickmap Bounds");
-            m_DrawBricksGUI = new GUIContent("Bricks");
-            m_DrawShapeVolumesGUI = new GUIContent("Shape Volumes");
-            m_EnableDensityTesterGUI = new GUIContent("Enable Density Tester");
-            m_DensityTesterPositionGUI = new GUIContent("Position");
-
             m_Target = (ProceduralTerrain)target;
         }
 
@@ -54,37 +49,53 @@ namespace TerrainSystem
         {
             serializedObject.Update();
 
-            EditorGUILayout.PropertyField(m_Material, m_MaterialGUI);
-            EditorGUILayout.PropertyField(m_UseStaticOrigin, m_UseStaticOriginGUI);
+            //
+            // Runtime properties
+            //
+            EditorGUILayout.PropertyField(m_Material, Styles.Material);
+            EditorGUILayout.PropertyField(m_UseStaticOrigin, Styles.UseStaticOrigin);
 
+            //
+            // Static debug options
+            //
+            EditorGUILayout.Space();
             EditorGUILayout.LabelField("Debug Options", EditorStyles.boldLabel);
 
+            // Highlight Brickmap Levels Toggle
             EditorGUI.BeginChangeCheck();
-            bool highlightBrickmapLevels = EditorGUILayout.Toggle("Highlight Brickmap Levels", ProceduralTerrain.HighlightBrickmapLevels);
+            bool highlightBrickmapLevels = EditorGUILayout.Toggle(Styles.HighlightBrickmapLevels, ProceduralTerrain.HighlightBrickmapLevels);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(target, "Toggle Highlight Brickmap Levels");
                 ProceduralTerrain.HighlightBrickmapLevels = highlightBrickmapLevels;
+                SceneView.RepaintAll();
             }
 
+            // Highlight Transition Meshes Toggle
             EditorGUI.BeginChangeCheck();
-            bool highlightTransitionMeshes = EditorGUILayout.Toggle("Highlight Transition Meshes", ProceduralTerrain.HighlightTransitionMeshes);
+            bool highlightTransitionMeshes = EditorGUILayout.Toggle(Styles.HighlightTransitionMeshes, ProceduralTerrain.HighlightTransitionMeshes);
             if (EditorGUI.EndChangeCheck())
             {
                 Undo.RecordObject(target, "Toggle Highlight Transition Meshes");
                 ProceduralTerrain.HighlightTransitionMeshes = highlightTransitionMeshes;
+                SceneView.RepaintAll();
             }
-
-            EditorGUILayout.LabelField("Debug Overlays (Editor only)", EditorStyles.boldLabel);
-            EditorGUILayout.PropertyField(m_DrawBrickmapBorders, m_DrawBrickmapBordersGUI);
-            EditorGUILayout.PropertyField(m_DrawBricks, m_DrawBricksGUI);
-            EditorGUILayout.PropertyField(m_DrawShapeVolumes, m_DrawShapeVolumesGUI);
             
-            EditorGUILayout.PropertyField(m_EnableDensityTester, m_EnableDensityTesterGUI);
+            //
+            // Debug overlays
+            //
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Debug Overlays (Editor only)", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(m_DrawBrickmapBorders, Styles.DrawBrickmapBorders);
+            EditorGUILayout.PropertyField(m_DrawBricks, Styles.DrawBricks);
+            EditorGUILayout.PropertyField(m_DrawShapeVolumes, Styles.DrawShapeVolumes);
+            
+            // Density tester
+            EditorGUILayout.PropertyField(m_EnableDensityTester, Styles.EnableDensityTester);
             if (m_EnableDensityTester.boolValue)
             {
                 EditorGUI.indentLevel++;
-                EditorGUILayout.PropertyField(m_DensityTesterPosition, m_DensityTesterPositionGUI);
+                EditorGUILayout.PropertyField(m_DensityTesterPosition, Styles.DensityTesterPosition);
                 EditorGUI.indentLevel--;
             }
 
@@ -93,7 +104,8 @@ namespace TerrainSystem
 
         void OnSceneGUI()
         {
-            if (m_EnableDensityTester.boolValue) DrawDensitySamplerHandle();
+            if (m_EnableDensityTester.boolValue)
+                DrawDensitySamplerHandle();
         }
 
         void DrawDensitySamplerHandle()

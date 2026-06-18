@@ -1,7 +1,7 @@
 // https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.universal/Shaders/Lit.shader
 // TODO: convert to shader graph?
 
-Shader "Terrain"
+Shader "TransvoxelTerrain"
 {
     Properties
     {
