@@ -20,8 +20,7 @@ namespace TerrainSystem
     [DisallowMultipleComponent]
     public partial class ProceduralTerrain : MonoBehaviour
     {
-        // TODO: track down yet another memory leak. Unity keeps crashing with 93% pagefile memory usage or somat >:(
-        // TODO: track terrain shapes with BVH for fast filtering.
+        // TODO: implement BVH for shapes for quicker intersection querying.
 
         /// <summary>
         /// Apply a material to the terrain.

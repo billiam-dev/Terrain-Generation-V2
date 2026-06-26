@@ -11,6 +11,7 @@ using TerrainSystem.SDF;
 
 namespace TerrainSystem.Scene
 {
+    // TODO
     public class DensityCache : SDFLayer, IDisposable
     {
         // The number of regional points per axis.
