@@ -1,6 +1,5 @@
 namespace TerrainSystem.Scene
 {
-    // TODO
     class BVH
     {
         class Node
