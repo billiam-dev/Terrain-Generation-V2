@@ -9,8 +9,9 @@ namespace TerrainSystem
     {
         static class Styles
         {
-            public static readonly GUIContent Material = EditorGUIUtility.TrTextContent("Material");
-            public static readonly GUIContent UseStaticOrigin = EditorGUIUtility.TrTextContent("Use Static Origin");
+            public static readonly GUIContent Material = EditorGUIUtility.TrTextContent("Material", "Apply a material to the terrain.");
+            public static readonly GUIContent UseStaticOrigin = EditorGUIUtility.TrTextContent("Use Static Origin", "Debug option, use the terrain position as the observer position.");
+            public static readonly GUIContent ShowDebugGUI = EditorGUIUtility.TrTextContent("Show Debug GUI", "Debug option, show debug information on screen.");
             public static readonly GUIContent DrawBrickmapBorders = EditorGUIUtility.TrTextContent("Brickmap Bounds");
             public static readonly GUIContent DrawBricks = EditorGUIUtility.TrTextContent("Bricks");
             public static readonly GUIContent DrawShapeVolumes = EditorGUIUtility.TrTextContent("Shape Volumes");
@@ -22,6 +23,7 @@ namespace TerrainSystem
 
         SerializedProperty m_Material;
         SerializedProperty m_UseStaticOrigin;
+        SerializedProperty m_ShowDebugGUI;
         SerializedProperty m_DrawBrickmapBorders;
         SerializedProperty m_DrawBricks;
         SerializedProperty m_DrawShapeVolumes;
@@ -36,6 +38,7 @@ namespace TerrainSystem
 
             m_Material = o.Find(x => x.Material);
             m_UseStaticOrigin = o.Find(x => x.UseStaticOrigin);
+            m_ShowDebugGUI = o.Find(x => x.ShowDebugGUI);
             m_DrawBrickmapBorders = o.Find(x => x.m_DrawBrickmapBorders);
             m_DrawBricks = o.Find(x => x.m_DrawBricks);
             m_DrawShapeVolumes = o.Find(x => x.m_DrawShapeVolumes);
@@ -54,6 +57,7 @@ namespace TerrainSystem
             //
             EditorGUILayout.PropertyField(m_Material, Styles.Material);
             EditorGUILayout.PropertyField(m_UseStaticOrigin, Styles.UseStaticOrigin);
+            EditorGUILayout.PropertyField(m_ShowDebugGUI, Styles.ShowDebugGUI);
 
             //
             // Static debug options

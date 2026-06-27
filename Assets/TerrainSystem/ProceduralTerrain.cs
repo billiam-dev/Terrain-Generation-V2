@@ -20,24 +20,26 @@ namespace TerrainSystem
     [DisallowMultipleComponent]
     public partial class ProceduralTerrain : MonoBehaviour
     {
-        // TODO: implement BVH for shapes for quicker intersection querying.
+        // TODO: Use BVH for shapes for quicker intersection querying?
 
         /// <summary>
         /// Apply a material to the terrain.
         /// </summary>
-        [Tooltip("Apply a material to the terrain.")]
         public Material Material;
 
         /// <summary>
         /// Debug option, use the terrain position as the observer position.
         /// </summary>
-        [Tooltip("Debug option, use the terrain position as the observer position.")]
         public bool UseStaticOrigin;
+
+        /// <summary>
+        /// Debug option, show debug information on screen.
+        /// </summary>
+        public bool ShowDebugGUI;
 
         /// <summary>
         /// Debug option, color each brickmap level differently.
         /// </summary>
-        [Tooltip("Debug option, color each brickmap level differently.")]
         public static bool HighlightBrickmapLevels
         {
             get;
@@ -47,7 +49,6 @@ namespace TerrainSystem
         /// <summary>
         /// Debug option, highlight the brick transition meshes.
         /// </summary>
-        [Tooltip("Debug option, highlight brick transition meshes.")]
         public static bool HighlightTransitionMeshes
         {
             get;
@@ -57,7 +58,6 @@ namespace TerrainSystem
         /// <summary>
         /// Set the camera through which the user is viewing the terrain.
         /// </summary>
-        [Tooltip("Set the camera through which the user is viewing the terrain.")]
         public static Camera ObserverCamera
         {
             get;
@@ -76,7 +76,7 @@ namespace TerrainSystem
         bool m_Initialized;
 
         // Debug info
-        static uint s_VertexCount; // TODO: make not static
+        static uint s_VertexCount;
         static uint s_IndexCount;
         double m_UpdateTime;
         double m_RenderTime;
@@ -138,7 +138,7 @@ namespace TerrainSystem
 
         void OnGUI()
         {
-            if (!m_Initialized)
+            if (!m_Initialized || !ShowDebugGUI)
                 return;
 
             DisplayDebugGUI();
@@ -227,7 +227,6 @@ namespace TerrainSystem
 
             // Update brickmaps origin.
             float3 observerPosition = UseStaticOrigin ? transform.position : camera.transform.position;
-            // TODO: when doing final tests: compare like footage of moving through terrain to see if this makes any observable difference (expeted result: no observable change, only speedup)
             if (math.length(observerPosition - m_ObserverPosition) > m_MinOriginUpdateDelta)
             {
                 m_ObserverPosition = observerPosition;
@@ -247,6 +246,8 @@ namespace TerrainSystem
                 m_BrickmapLevels[i].UpdateBricks(camera, m_Scene, m_DensityEvaluator, m_Mesher);
 
             // Execute meshing tasks queued this frame.
+            // Note: the continuous method completes all the meshing tasks within the frame, meaning the terrain updates faster.
+            // To optimize for performance, use the regular ExecutePendingTasks(), which spaces the work over multiple frames.
             if (m_Mesher.NumPendingTasks > 0)
                 m_Mesher.ExecutePendingTasksContinuous();
 
@@ -574,7 +575,7 @@ namespace TerrainSystem
 
                     void DrawMesh(Mesh mesh, float3 position, Material material, MaterialPropertyBlock mpb, Camera camera)
                     {
-                        // TODO: When in play mode; use GameObject with MeshRenderer and MeshCollider components.
+                        // TODO: For builds: use MeshRenderer and MeshCollider components, or a custom render pass.
 
                         Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb);
 
@@ -590,7 +591,7 @@ namespace TerrainSystem
                         if (coreMesh != null)
                         {
                             bytes += coreMesh.vertexCount * Vertex.SizeBytes;
-                            bytes += (int)coreMesh.GetIndexCount(0) * 2; // Index format is UInt16; 16 bits or 2 bytes.
+                            bytes += (int)coreMesh.GetIndexCount(0) * 2; // Index format is UInt16 (2 bytes)
                         }
 
                         // Transition mesh
@@ -995,8 +996,7 @@ namespace TerrainSystem
                     originHasShifted = false;
                 }
 
-                // Update all bricks.
-                // TODO: love to try not to update every brick every frame. More event-based, selective updates would be better.
+                // Update bricks.
                 foreach (Brick brick in bricks.Values)
                     brick.Update(observerCamera, scene, intersectingShapes, densityEvaluator, mesher);
 

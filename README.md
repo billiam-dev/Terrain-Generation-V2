@@ -16,7 +16,7 @@ Note that this project is incomplete and not for use in production, but can be u
 
 ### Sources
 - https://paulbourke.net/geometry/polygonise/
-https://transvoxel.org/
-https://eetumaenpaa.fi/blog/marching-cubes-optimizations-in-unity/#voxelcorners-vs-stackalloc
+- https://transvoxel.org/
+- https://eetumaenpaa.fi/blog/marching-cubes-optimizations-in-unity/#voxelcorners-vs-stackalloc
 - https://developer.nvidia.com/gpugems/gpugems3/part-i-geometry/chapter-1-generating-complex-procedural-terrains-using-gpu
 - https://iquilezles.org/

@@ -3,7 +3,7 @@ using UnityEngine;
 namespace TerrainSystem
 {
     [RequireComponent(typeof(Camera))]
-    public class TerrainObserver : MonoBehaviour
+    public sealed class TerrainObserver : MonoBehaviour
     {
         Camera m_Camera;
 
