@@ -577,7 +577,22 @@ namespace TerrainSystem
                     {
                         // TODO: For builds: use MeshRenderer and MeshCollider components, or a custom render pass.
 
-                        Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb);
+                        //Graphics.DrawMesh(mesh, position, Quaternion.identity, material, 0, camera, 0, mpb);
+                        RenderParams renderParams = new()
+                        {
+                            layer = 0,
+                            renderingLayerMask = RenderingLayerMask.defaultRenderingLayerMask,
+                            rendererPriority = 0,
+                            worldBounds = new Bounds(position + (float3)mesh.bounds.center, mesh.bounds.size),
+                            camera = camera,
+                            motionVectorMode = MotionVectorGenerationMode.Camera,
+                            reflectionProbeUsage = ReflectionProbeUsage.Off,
+                            material = material,
+                            matProps = mpb,
+                            shadowCastingMode = ShadowCastingMode.On,
+                            receiveShadows = true
+                        };
+                        Graphics.RenderMesh(renderParams, mesh, 0, Matrix4x4.TRS(position, Quaternion.identity, Vector3.one));
 
                         s_VertexCount += (uint)mesh.vertexCount;
                         s_IndexCount += mesh.GetIndexCount(0);

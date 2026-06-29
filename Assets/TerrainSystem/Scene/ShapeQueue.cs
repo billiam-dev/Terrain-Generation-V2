@@ -265,6 +265,11 @@ namespace TerrainSystem.Scene
                     boundsVolume.xz = dimentions.y * 2.0f;
                     break;
 
+                case DistanceFunction.Torus:
+                    boundsVolume.xz = (dimentions.x * 2.0f) + (dimentions.y * 2.0f);
+                    boundsVolume.y = dimentions.y * 2.0f;
+                    break;
+
                 case DistanceFunction.Cube:
                     boundsVolume = dimentions * 2.0f;
                     break;
